@@ -47,3 +47,48 @@ jobs:
       - name: kein aws-lc-rs
         working-directory: src-tauri
         run: "! cargo tree --workspace --target all -i aws-lc-rs >/dev/null 2>&1"
+
+  # Beide Varianten (Tauri und nativ) auf allen drei Systemen bauen; Binärdateien als Artefakte.
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-22.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux-Abhängigkeiten
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: cargo build (chatty, chatty-native)
+        working-directory: src-tauri
+        run: cargo build --release -p chatty -p chatty-native
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chatty-${{ runner.os }}
+          path: |
+            src-tauri/target/release/chatty
+            src-tauri/target/release/chatty-native
+            src-tauri/target/release/chatty.exe
+            src-tauri/target/release/chatty-native.exe
+          if-no-files-found: error
+          retention-days: 14
