@@ -41,7 +41,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE_WITH_TAURI_SIGNER_PUBLIC_KEY",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENFMkYyRDQwRTQ1Q0E5OTUKUldTVnFWemtRQzB2enVNZU4vaWNVd3VhMFFpcVd2R2Ryank3LzBrUExiTmE4SjVJUW5VaXNkbTQK",
       "endpoints": [
         "https://github.com/martinsachs/chatty/releases/latest/download/latest.json"
       ]

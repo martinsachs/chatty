@@ -121,8 +121,8 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
 - `keyring` 3.x statt 4.x (bekannte, stabile API).
 - Klick auf eine Desktop-Benachrichtigung fokussiert den Space nicht (vom Notification-Plugin auf
   dem Desktop nicht unterstützt); der In-App-Hinweis hat dafür einen „Öffnen“-Knopf.
-- Updater-Schlüssel erzeugt Martin (`usage.md` → Releases signieren); bis dahin steht in
-  `tauri.conf.json` ein Platzhalter und Release-Builds schlagen beim Signieren fehl.
+- Updater-Schlüssel von Martin erzeugt (2026-11-20, `usage.md` → Releases signieren): öffentlicher
+  Schlüssel in `tauri.conf.json`, privater Schlüssel und Passwort nur als GitHub-Secrets.
 
 ### Getestet (2026-11-20)
 - Rust: 35 Unit-Tests (Kern, Google gegen JSON-Fixtures und lokalen HTTP-Mock, Mattermost-Mapping),
