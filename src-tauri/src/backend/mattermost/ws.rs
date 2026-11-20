@@ -23,8 +23,11 @@ use crate::error::{Error, Result};
 use crate::model::BackendEvent;
 
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
-/// Der Server pingt etwa alle 30–60 s; bleibt länger alles still, gilt die Verbindung als tot.
-const READ_TIMEOUT: Duration = Duration::from_secs(100);
+/// Eigener Ping wie die Mattermost-Webapp: Proxys vor dem Server kappen sonst still liegende
+/// Verbindungen (beobachtet: Reset nach 30–90 s ohne Verkehr).
+const PING_INTERVAL: Duration = Duration::from_secs(20);
+/// Auf den Ping antwortet der Server; bleibt länger alles still, gilt die Verbindung als tot.
+const READ_TIMEOUT: Duration = Duration::from_secs(60);
 
 enum End {
     /// Ereigniskanal geschlossen → Task beenden.
@@ -41,15 +44,18 @@ pub async fn run(backend: Arc<MattermostBackend>, tx: EventSender) {
             End::Closed => return,
             End::Lost(detail, connected) => (detail, connected),
         };
+        // Abriss einer laufenden Verbindung: erst still neu verbinden, Offline nur wenn das scheitert.
+        if was_connected {
+            delay = Duration::from_secs(1);
+            tokio::time::sleep(delay).await;
+            continue;
+        }
         let status = BackendEvent::Status {
             online: false,
             detail: Some(detail),
         };
         if tx.send((id.clone(), status)).is_err() {
             return;
-        }
-        if was_connected {
-            delay = Duration::from_secs(1);
         }
         tokio::time::sleep(delay).await;
         delay = (delay * 2).min(MAX_BACKOFF);
@@ -109,13 +115,31 @@ async fn session(backend: &MattermostBackend, tx: &EventSender) -> End {
     {
         return End::Closed;
     }
+    let mut seq = 1u64;
+    let mut ping =
+        tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
+    let mut deadline = tokio::time::Instant::now() + READ_TIMEOUT;
     loop {
-        let msg = match tokio::time::timeout(READ_TIMEOUT, ws.next()).await {
-            Err(_) => return End::Lost("WebSocket: Zeitüberschreitung".into(), true),
-            Ok(None) => return End::Lost("WebSocket geschlossen".into(), true),
-            Ok(Some(Err(e))) => return End::Lost(e.to_string(), true),
-            Ok(Some(Ok(m))) => m,
+        let next = tokio::select! {
+            _ = ping.tick() => {
+                seq += 1;
+                let msg = json!({ "seq": seq, "action": "ping" }).to_string();
+                if let Err(e) = ws.send(WsMessage::text(msg)).await {
+                    return End::Lost(e.to_string(), true);
+                }
+                continue;
+            }
+            () = tokio::time::sleep_until(deadline) => {
+                return End::Lost("WebSocket: Zeitüberschreitung".into(), true);
+            }
+            next = ws.next() => next,
         };
+        let msg = match next {
+            None => return End::Lost("WebSocket geschlossen".into(), true),
+            Some(Err(e)) => return End::Lost(e.to_string(), true),
+            Some(Ok(m)) => m,
+        };
+        deadline = tokio::time::Instant::now() + READ_TIMEOUT;
         let WsMessage::Text(text) = msg else { continue };
         let Ok(event) = serde_json::from_str::<WsEvent>(text.as_str()) else {
             continue;

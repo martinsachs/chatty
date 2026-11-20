@@ -116,6 +116,20 @@ class Chat {
     }
   }
 
+  /** Nach (Neu-)Verbindung: im Abriss verpasste Nachrichten des offenen Space holen. */
+  private async catchUp() {
+    const { account, space } = this;
+    if (!account || !space || this.loading) return;
+    try {
+      const page = await api.listMessages(account, space);
+      if (this.account !== account || this.space !== space) return;
+      for (const m of page.messages) this.upsert(m);
+      this.messages.sort((a, b) => a.created - b.created);
+    } catch {
+      // nächste Verbindung versucht es erneut
+    }
+  }
+
   async loadOlder() {
     if (!this.account || !this.space || !this.cursor || this.loading) return;
     this.loading = true;
@@ -255,7 +269,10 @@ class Chat {
     switch (event.type) {
       case "status":
         if (acc) acc.online = event.online;
-        if (event.online) this.loadSpaces(account);
+        if (event.online) {
+          this.loadSpaces(account);
+          if (account === this.account) this.catchUp();
+        }
         else if (event.detail && !this.popout) this.toast(`${acc?.label ?? "Konto"}: ${event.detail}`, "error");
         break;
       case "space_updated": {

@@ -149,4 +149,7 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
   hochgezählt. Neues Profilbild erst nach Neustart (Bilder bleiben je Sitzung im Speicher).
 - Windows/macOS-Installer und Updater-Ablauf erst mit dem ersten Tag-Build.
 - rustls: ring und aws-lc-rs sind beide im Baum; WebSocket läuft deshalb über reqwests TLS.
+- Echter Server (hinter Proxy) kappte die WebSocket-Verbindung alle 30–90 s ohne Verkehr. Client pingt
+  jetzt alle 20 s (`{"action":"ping"}` wie die Webapp), Abrisse werden still neu verbunden, danach lädt
+  der offene Space verpasste Nachrichten nach. 5 min gegen den echten Server: vorher 3 Abrisse, danach keiner.
   `tokio_tungstenite::connect_async` mit wss nicht verwenden (Panic ohne Default-Provider).
