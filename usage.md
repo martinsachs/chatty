@@ -20,6 +20,20 @@ Die Installer sind nicht mit einem Hersteller-Zertifikat signiert:
 Updates kommen danach automatisch: Beim Start erscheint ein Hinweis „Version … verfügbar“,
 ein Klick auf **Installieren** lädt das (signiert geprüfte) Update und startet neu.
 
+### Native Variante `chatty-native`
+
+Gleiche Funktionen ohne WebView (deutlich weniger Speicher, [ADR 08](adr/08_native_gui.md)). Dateien im
+selben Release, Namen beginnen mit `chatty-native`:
+
+| System | Datei |
+|---|---|
+| Linux | `chatty-native_…_amd64.deb` oder `chatty-native-linux-x86_64.AppImage` |
+| Windows | `chatty-native_…-setup.exe` (Installation ohne Administratorrechte) |
+| macOS | `chatty-native_….dmg` (Apple Silicon) bzw. `…-x86_64.dmg` (Intel) |
+
+Beide Varianten teilen Konten, Schlüsselbund, Cache und `chatty.toml`. Selbst-Update wie oben
+(Windows, macOS, Linux nur als AppImage; die deb aktualisiert die Paketverwaltung).
+
 ## Konto hinzufügen
 
 Beim ersten Start öffnet sich der Dialog **Konto hinzufügen**; später über **+** in der linken Leiste.
@@ -128,6 +142,9 @@ Formatierung: `**fett**` bzw. `*fett*`, `_kursiv_`, `~durchgestrichen~`, `` `Cod
 - Mattermost: Emoji-Reaktionen werden für die gängigen Emoji in Unicode übersetzt, andere als `:name:`
   angezeigt.
 - Slack als Backend gibt es noch nicht (nur die Optik).
+- `chatty-native`: kein Ziehen in der Seitenleiste (Favorit/Stumm per Knopf beim Überfahren), keine
+  abgelösten Fenster, keine Suche nach fremden Kanälen; eigene Server-Emojis nur in Reaktionen als Bild,
+  im Text als `:name:`.
 
 ## Konto entfernen
 

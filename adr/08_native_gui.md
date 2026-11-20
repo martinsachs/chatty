@@ -1,7 +1,8 @@
 # ADR 08: Zweite Variante mit nativer GUI (ohne WebView)
 
 Status: angenommen (2026-11-20, Martin: Kern herauslösen, Prototyp mit **iced**; Bibliotheken nur, wenn die
-Lizenz kommerzielle Nutzung erlaubt). Kern und Prototyp umgesetzt, siehe „Umsetzung“.
+Lizenz kommerzielle Nutzung erlaubt). Kern und Prototyp umgesetzt, siehe „Umsetzung“; danach auf vollen
+Funktionsumfang mit Installern und Updater ausgebaut, siehe „Ausbau“.
 
 ## Kontext
 
@@ -84,13 +85,42 @@ mit Lizenzhinweis erlaubt) und Iced-Icons ein. Für Releases: Lizenzhinweise der
 |---|---|---|---|
 | Tauri (WebKitGTK, sichtbar, ohne offenen Kanal) | 237 MB | 455 MB | 3 |
 | chatty-native (iced/tiny-skia, **unsichtbares** Fenster) | 18 MB | 24 MB | 1 |
+| chatty-native nach Ausbau (Markdown, Bilder, Dialoge; unsichtbar, ein Lauf) | 25 MB | 33 MB | 1 |
 
 Die native Messung ist eine Untergrenze: Ein unsichtbares Fenster zeichnet nicht laufend und hat keinen
 Darstellungspuffer (bei 1100×700 etwa 3 MB). Messung mit sichtbarem Fenster:
 `scripts/ram.sh --bin src-tauri/target/release/chatty-native` (startet ein Fenster mit Fokus, daher vom
-Nutzer selbst auszuführen). Binärgröße: 12,6 MB (Tauri 14,5 MB).
+Nutzer selbst auszuführen). Binärgröße: 12,6 MB, nach Ausbau 18,2 MB (Tauri 14,5 MB).
+
+### Ausbau (2026-11-20, Auftrag Martin: alle fehlenden Funktionen, Windows/macOS, alle Varianten in CI)
+
+- `chatty-native` hat jetzt: Konten anlegen/entfernen (Mattermost mit MFA, Google-Login im Browser, Google-
+  Client), Optik und Benachrichtigungen einstellen, Threads (rechte Leiste, Antworten), Reaktionen
+  (Schnellauswahl), Bearbeiten (✎, Esc bricht ab) und Löschen eigener Nachrichten, Anhänge senden und speichern
+  (Dateidialog `rfd`, Linux über XDG-Portal), Suche, Markdown (iced `markdown`, nackte URLs als Links,
+  Zeilenumbrüche wie Mattermost), Profilbilder (bzw. Initialen) mit Gruppierung von Folgenachrichten, eigene
+  Server-Emojis in Reaktionen, Favorit/Stumm per Knopf beim Überfahren, OS-Benachrichtigungen
+  (`notify-rust`), Selbst-Update.
+- Module: `main.rs` (Zustand, Logik), `view.rs` (Ansicht), `look.rs` (Optiken), `text.rs` (Markdown-
+  Vorbereitung), `updater.rs`.
+- Installer per `cargo packager` (`[package.metadata.packager]` in `native/Cargo.toml`): deb und AppImage,
+  NSIS (Installation ohne Admin), app/dmg. Lokal geprüft: deb 8,0 MB, AppImage 9,8 MB.
+- Updater: `latest-native.json` im Release, signierte Datei je Plattform (`linux-x86_64` = AppImage,
+  `windows-x86_64` = exe, `darwin-aarch64`/`darwin-x86_64` = Binärdatei), geprüft mit dem minisign-Schlüssel
+  aus `tauri.conf.json` (`minisign-verify`). Signiert wird im Release-Workflow mit `tauri signer sign`
+  (gleiche Secrets). Test: Signatur aus `tauri signer` mit Wegwerf-Schlüssel (`native/tests/fixtures/`).
+- CI: Job `build` baut auf Linux, Windows und macOS die Tauri-Installer (ohne Updater-Artefakte) und die
+  nativen Installer und lädt sie als Artefakte hoch. Release-Workflow: Job `native` (vier Ziele) und
+  `native-manifest`, danach veröffentlicht `publish`.
+- Lizenzen erneut geprüft (452 Crates über alle drei Plattformen): alle für kommerzielle Nutzung frei; neu
+  u. a. `rfd` (MIT), `notify-rust`, `opener`, `minisign-verify` (MIT), `self-replace` (Apache-2.0),
+  `pulldown-cmark`, `image` (MIT/Apache), BSL-1.0 (Boost, frei). Unverändert: `option-ext` (MPL-2.0),
+  `self_cell` (Apache-2.0 gewählt).
 
 ### Offen
 
-- Entscheidung, ob und in welcher Reihenfolge die fehlenden Funktionen nachgezogen werden.
-- Windows und macOS ungetestet (iced/winit unterstützen beide); keine CI-Artefakte für `chatty-native`.
+- Windows und macOS nur gebaut (CI), nicht bedient; Dateidialoge, Benachrichtigungen und Selbst-Update dort
+  ungetestet. Linux: Selbst-Update (Download, Austausch, Neustart) nicht durchgespielt, nur Signaturprüfung.
+- Interaktion (Klicks, Hochscrollen, Dialoge) in `chatty-native` nur per Code geprüft; sichtbar geprüft per
+  unsichtbarem Screenshot (Verlauf, Markdown, Gruppierung, Links).
+- Release-Workflow für `chatty-native` erst beim nächsten Tag wirklich ausgeführt.

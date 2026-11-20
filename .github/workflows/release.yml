@@ -1,6 +1,7 @@
 name: release
 
-# Tag v* pushen → Installer für Linux, Windows, macOS + latest.json (Updater); nach allen Builds veröffentlicht.
+# Tag v* pushen → Installer beider Varianten (Tauri, nativ) für Linux, Windows, macOS + latest.json bzw.
+# latest-native.json (Updater); nach allen Builds veröffentlicht.
 on:
   push:
     tags: ["v*"]
@@ -73,10 +74,125 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+  # Native Variante (ADR 08): Installer und signierte Binärdatei je Plattform in den Release-Entwurf,
+  # den die Tauri-Jobs angelegt haben. Die Binärdatei mit .sig dient dem Updater von chatty-native.
+  native:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            key: linux-x86_64
+            formats: deb,appimage
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            key: windows-x86_64
+            formats: nsis
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            key: darwin-aarch64
+            formats: app,dmg
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            key: darwin-x86_64
+            formats: app,dmg
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux-Abhängigkeiten
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev libfuse2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: native-${{ matrix.target }}
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-packager
+
+      # Nur für `tauri signer sign` (gleicher Schlüssel wie der Tauri-Updater).
+      - run: npm ci
+
+      - name: Bauen und verpacken
+        shell: bash
+        working-directory: src-tauri
+        run: |
+          cargo build --release -p chatty-native --target ${{ matrix.target }}
+          cargo packager --release -p chatty-native --target ${{ matrix.target }} --formats ${{ matrix.formats }}
+
+      - name: Signieren und hochladen
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          OUT=src-tauri/target/${{ matrix.target }}/release
+          mkdir -p dist
+          # Updater-Datei: Linux die AppImage, sonst die Binärdatei.
+          case "${{ runner.os }}" in
+            Linux) SRC=$(ls "$OUT"/*.AppImage); BIN="chatty-native-${{ matrix.key }}.AppImage" ;;
+            Windows) SRC="$OUT/chatty-native.exe"; BIN="chatty-native-${{ matrix.key }}.exe" ;;
+            *) SRC="$OUT/chatty-native"; BIN="chatty-native-${{ matrix.key }}" ;;
+          esac
+          cp "$SRC" "dist/$BIN"
+          npx tauri signer sign "dist/$BIN"
+          for f in "$OUT"/*.deb "$OUT"/*.AppImage "$OUT"/*-setup.exe "$OUT"/*.dmg; do
+            [ -f "$f" ] || continue
+            case "${{ matrix.key }}" in darwin-x86_64) n="$(basename "${f%.dmg}")-x86_64.dmg"; cp "$f" "dist/$n" ;; *) cp "$f" dist/ ;; esac
+          done
+          ls -la dist
+          gh release upload "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --clobber
+
+  # Updater-Manifest der nativen Variante aus den hochgeladenen Signaturen.
+  native-manifest:
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - name: latest-native.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir sigs && cd sigs
+          gh release download "$TAG" --repo "$REPO" --pattern 'chatty-native-*.sig'
+          python3 - <<'EOF'
+          import glob, json, os
+          tag, repo = os.environ["TAG"], os.environ["REPO"]
+          platforms = {}
+          for sig in sorted(glob.glob("chatty-native-*.sig")):
+              asset = sig[:-4]
+              key = asset[len("chatty-native-"):].removesuffix(".exe").removesuffix(".AppImage")
+              platforms[key] = {
+                  "url": f"https://github.com/{repo}/releases/download/{tag}/{asset}",
+                  "signature": open(sig).read().strip(),
+              }
+          json.dump({"version": tag.lstrip("v"), "platforms": platforms}, open("latest-native.json", "w"), indent=2)
+          print(open("latest-native.json").read())
+          EOF
+          gh release upload "$TAG" latest-native.json --repo "$REPO" --clobber
+
   # Erst wenn alle Plattformen gebaut und hochgeladen sind: Entwurf veröffentlichen.
   # Danach findet der Updater latest.json unter releases/latest.
   publish:
-    needs: release
+    needs: [release, native-manifest]
     runs-on: ubuntu-latest
     steps:
       - name: Release veröffentlichen

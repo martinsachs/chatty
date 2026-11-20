@@ -63,19 +63,19 @@ src-tauri/core/         chatty-core, ohne Oberfläche:
   src/store.rs          SQLite-Cache
   src/secrets.rs        OS-Schlüsselbund
   src/config.rs         chatty.toml, accounts.json
-src-tauri/native/       chatty-native: Prototyp mit iced statt WebView (ADR 08)
+src-tauri/native/       chatty-native: Oberfläche mit iced statt WebView (ADR 08)
 ```
 
-Native Variante (Prototyp, nutzt die Konten der Tauri-Variante):
-`cd src-tauri && cargo run --release -p chatty-native`
+Native Variante (ohne WebView, teilt Konten und Cache mit der Tauri-Variante):
+`cd src-tauri && cargo run --release -p chatty-native`; Installer: `cargo packager --release -p chatty-native`.
 
 Weitere Dienste (z. B. Slack) kommen als neues Modul unter `backend/` dazu, das `ChatBackend`
 implementiert.
 
 ## Release
 
-Tag `vX.Y.Z` pushen → GitHub Actions baut Installer (deb, AppImage, rpm, msi/exe, dmg) und
-`latest.json` und veröffentlicht den Release, sobald alle Plattformen fertig sind. Danach holen
+Tag `vX.Y.Z` pushen → GitHub Actions baut Installer beider Varianten (deb, AppImage, rpm, msi/exe, dmg) und
+`latest.json` bzw. `latest-native.json` und veröffentlicht den Release, sobald alle Plattformen fertig sind. Danach holen
 sich bestehende Installationen das Update. Einrichtung des Signaturschlüssels: [usage.md](usage.md#releases-signieren).
 
 ## Lizenz

@@ -177,3 +177,5 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
   Optiken per Screenshot des eigenen Testfensters geprüft; Kürzen nur per Logiktest, nicht per UI-Scrollen.
 - 2026-11-20 (Auftrag Martin): Kern als `chatty-core` herausgelöst, Prototyp `chatty-native` mit iced
   (ADR 08: Umfang, Lizenzprüfung, RAM-Untergrenze 18 MB PSS bei unsichtbarem Fenster).
+- 2026-11-20 (Auftrag Martin): `chatty-native` auf vollen Funktionsumfang ausgebaut, Installer (cargo-packager)
+  und Selbst-Update; CI baut beide Varianten mit Installern auf Linux, Windows, macOS (ADR 08).

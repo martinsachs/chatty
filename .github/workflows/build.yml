@@ -48,12 +48,18 @@ jobs:
         working-directory: src-tauri
         run: "! cargo tree --workspace --target all -i aws-lc-rs >/dev/null 2>&1"
 
-  # Beide Varianten (Tauri und nativ) auf allen drei Systemen bauen; Binärdateien als Artefakte.
+  # Beide Varianten (Tauri und nativ) mit Installern auf allen drei Systemen; Pakete als Artefakte.
   build:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-22.04, windows-latest, macos-latest]
+        include:
+          - platform: ubuntu-22.04
+            native_formats: deb,appimage
+          - platform: windows-latest
+            native_formats: nsis
+          - platform: macos-latest
+            native_formats: app,dmg
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +68,7 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev libfuse2
 
       - uses: actions/setup-node@v4
         with:
@@ -75,20 +81,39 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - run: npm ci
-      - run: npm run build
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-packager
 
-      - name: cargo build (chatty, chatty-native)
+      - run: npm ci
+
+      # Ohne Signaturschlüssel: Updater-Artefakte nur im Release-Workflow.
+      - name: Tauri-Installer
+        shell: bash
+        run: npx tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Native Installer
+        shell: bash
         working-directory: src-tauri
-        run: cargo build --release -p chatty -p chatty-native
+        run: |
+          cargo build --release -p chatty-native
+          cargo packager --release -p chatty-native --formats ${{ matrix.native_formats }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: chatty-${{ runner.os }}
           path: |
-            src-tauri/target/release/chatty
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/*.deb
+            src-tauri/target/release/*.AppImage
+            src-tauri/target/release/*-setup.exe
+            src-tauri/target/release/*.dmg
             src-tauri/target/release/chatty-native
-            src-tauri/target/release/chatty.exe
             src-tauri/target/release/chatty-native.exe
           if-no-files-found: error
           retention-days: 14
