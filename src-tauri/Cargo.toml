@@ -1,6 +1,6 @@
 [package]
 name = "chatty"
-version = "0.1.0"
+version = "0.1.1"
 description = "Server-unabhängiger Desktop-Chatclient (Google Chat, Mattermost)"
 edition = "2024"
 
