@@ -45,6 +45,21 @@ jobs:
 
       - run: npm ci
 
+      # Leeres Secret führt sonst erst nach dem Build zu "Missing comment in secret key".
+      - name: Signatur-Secrets prüfen
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY ist leer: als Repository-Secret unter Settings → Secrets and variables → Actions anlegen."
+            exit 1
+          fi
+          if ! printf '%s' "$KEY" | base64 -d 2>/dev/null | head -1 | grep -q '^untrusted comment:'; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY ist nicht der Inhalt von ~/.tauri/chatty.key (eine Base64-Zeile)."
+            exit 1
+          fi
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
