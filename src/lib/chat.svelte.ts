@@ -201,6 +201,17 @@ class Chat {
     }
   }
 
+  /**
+   * ADR 05: Wieder unten angekommen, die ältesten Nachrichten über `max` verwerfen; beim Hochscrollen
+   * lädt `loadOlder` sie neu. Nur Mattermost: dort ist der Cursor eine Post-ID, bei Google ein pageToken.
+   */
+  trimToWindow(max = 300) {
+    if (this.messages.length <= max || this.loadingOlder || this.loadingInitial) return;
+    if (this.currentAccount?.kind !== "mattermost") return;
+    this.messages = this.messages.slice(-max);
+    this.cursor = this.messages[0].id;
+  }
+
   markRead() {
     const s = this.currentSpace;
     if (!this.account || !s) return;

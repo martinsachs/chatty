@@ -76,6 +76,15 @@ chat["onEvent"]?.call(chat, { account: "acc", event: { type: "status", online: t
 await wait(20);
 assert.deepEqual(chat.messages.map((m) => m.id), ["B-100", "B-101", "B-102"], "Überlappung → gemischt");
 
+// S2 (ADR 05): unten angekommen → nur die neuesten `max` bleiben, Cursor = älteste verbliebene.
+chat.messages = [msg("B", 1), msg("B", 2), msg("B", 3), msg("B", 4)];
+chat.trimToWindow(3);
+assert.deepEqual(chat.messages.map((m) => m.id), ["B-2", "B-3", "B-4"], "gekürzt");
+assert.equal(chat.cursor, "B-2");
+chat.accounts = [{ id: "acc", online: true, label: "x", kind: "google" }];
+chat.trimToWindow(1);
+assert.equal(chat.messages.length, 3, "Google: nicht kürzen");
+
 // K5: Kontowechsel meldet alten Space inaktiv.
 calls.length = 0;
 await chat.selectAccount("acc2");

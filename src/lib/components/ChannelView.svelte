@@ -54,6 +54,7 @@
     const fromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
     atBottom = fromBottom < 40;
     showDown = fromBottom > 300;
+    if (atBottom) chat.trimToWindow();
     if (list.scrollTop < 80 && chat.cursor && !chat.loadingOlder && !chat.loadingInitial) {
       const before = list.scrollHeight;
       await chat.loadOlder();
