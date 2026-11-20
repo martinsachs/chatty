@@ -67,8 +67,8 @@ implementiert.
 ## Release
 
 Tag `vX.Y.Z` pushen → GitHub Actions baut Installer (deb, AppImage, rpm, msi/exe, dmg) und
-`latest.json` als Release-Entwurf. Nach Veröffentlichen des Entwurfs holen sich bestehende
-Installationen das Update. Einrichtung des Signaturschlüssels: [usage.md](usage.md#releases-signieren).
+`latest.json` und veröffentlicht den Release, sobald alle Plattformen fertig sind. Danach holen
+sich bestehende Installationen das Update. Einrichtung des Signaturschlüssels: [usage.md](usage.md#releases-signieren).
 
 ## Lizenz
 

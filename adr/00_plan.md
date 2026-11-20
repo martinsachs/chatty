@@ -81,7 +81,7 @@ E-Mail-Adressen, keine Secrets (öffentlich!).
 - `tauri-plugin-updater`, Endpunkt `https://github.com/martinsachs/chatty/releases/latest/download/latest.json`.
 - Signaturschlüssel: `tauri signer generate` durch Martin lokal; privater Schlüssel nur als GitHub-Secret
   (`TAURI_SIGNING_PRIVATE_KEY`), nie im Repo/Ausgaben. Public Key in `tauri.conf.json`.
-- Workflows: PR → `cargo clippy`, `cargo test`, `svelte-check`, Build Linux; Tag → `tauri-action` Matrix, Release-Entwurf.
+- Workflows: PR → `cargo clippy`, `cargo test`, `svelte-check`, Build Linux; Tag → `tauri-action` Matrix als Entwurf, nach allen Builds veröffentlicht.
 - Tags pusht Martin.
 
 ## Meilensteine

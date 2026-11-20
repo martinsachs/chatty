@@ -145,4 +145,5 @@ npm run tauri signer generate -- -w ~/.tauri/chatty.key
   Updates mehr annehmen.
 
 Release: Version in `package.json`, `src-tauri/Cargo.toml` und `src-tauri/tauri.conf.json`
-anheben, committen, Tag `vX.Y.Z` pushen, den Release-Entwurf auf GitHub prüfen und veröffentlichen.
+anheben, committen, Tag `vX.Y.Z` pushen. Der Workflow veröffentlicht den Release automatisch, wenn alle
+Plattform-Builds erfolgreich waren; scheitert einer, bleibt ein Entwurf stehen.

@@ -1,6 +1,6 @@
 name: release
 
-# Tag v* pushen → Installer für Linux, Windows, macOS + latest.json (Updater) als Release-Entwurf.
+# Tag v* pushen → Installer für Linux, Windows, macOS + latest.json (Updater); nach allen Builds veröffentlicht.
 on:
   push:
     tags: ["v*"]
@@ -72,3 +72,14 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  # Erst wenn alle Plattformen gebaut und hochgeladen sind: Entwurf veröffentlichen.
+  # Danach findet der Updater latest.json unter releases/latest.
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false --latest
