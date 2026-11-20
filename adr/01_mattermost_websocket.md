@@ -19,8 +19,8 @@ keiner als Standard installiert ist.
 - Bricht eine bestehende Verbindung ab, verbindet der Client still neu. „Offline“ meldet er erst, wenn
   das Neuverbinden scheitert. Danach holt der offene Space verpasste Nachrichten nach.
 - Vorgeschlagen (Konzept N1–N4):
-  - Die Leseschleife liest und pingt nur; Ereignisse gehen über einen Kanal an einen Handler-Task je
-    Sitzung, der REST-Aufrufe macht. Ein hängender Aufruf hält so keine Pings auf.
+  - `handle()` läuft mit 10 s Timeout, REST-Aufrufe mit 30 s; ein hängender Aufruf hält Pings so höchstens
+    10 s auf.
   - Bei `posted` in bekannten Kanälen rechnet das Backend den Space selbst fort (Zeit, Zähler,
     ungelesen, Erwähnung) statt ihn per REST zu laden.
   - Jede Sitzung meldet weiter `online`. Das Frontend holt danach in jedem Fenster den offenen Space nach;

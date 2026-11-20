@@ -11,12 +11,13 @@ Heute verhindern das Escaping und die CSP; diese Entscheidung ist eine zweite Li
 
 ## Entscheidung
 
-- Dialoge öffnet das Backend (blockierende API von `tauri-plugin-dialog` in `spawn_blocking`).
+- Dialoge öffnet das Backend (Callback-API von `tauri-plugin-dialog` mit `oneshot`-Kanal).
 - Download: `save_attachment(account, attachment) -> bool` öffnet den Speichern-Dialog und schreibt
   selbst; `false` = abgebrochen. Bei Fehler bleibt im Frontend der Rückfall „im Browser öffnen“.
   `download_attachment` entfällt.
 - Upload: `pick_files() -> Vec<PickedFile { id: u64, name: String }>` öffnet den Öffnen-Dialog und merkt
-  die Pfade in `AppState.picked: Mutex<HashMap<u64, PathBuf>>`. `send_message(…, files: Vec<u64>)` liest
+  die Pfade in `AppState.picked: Picked` (`Mutex<HashMap<u64, PathBuf>>`, Zähler-IDs, `add`/`paths`/`remove`).
+  Der Composer leert seine Liste erst nach erfolgreichem Senden. `send_message(…, files: Vec<u64>)` liest
   sie; nach erfolgreichem Senden werden die IDs entfernt, bei Fehler bleiben sie gültig. Unbekannte ID →
   „Datei nicht mehr verfügbar, bitte neu wählen“.
 - Das Frontend ruft `@tauri-apps/plugin-dialog` nicht mehr auf; `dialog:default` fällt aus

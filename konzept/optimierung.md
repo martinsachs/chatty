@@ -20,8 +20,7 @@ Messnachweis setzt [ADR 04](../adr/04_webview_speicher.md) auf „abgelehnt“.
 ## Vorgehen
 
 Zwei getrennte Code-Durchsichten (Rust-Kern und Svelte-Frontend) am Stand `f853635`, nur lesend.
-Dazu die Messungen aus dem Plan, der 5-Minuten-Mitschnitt gegen den echten Mattermost-Server und eine
-Goldfish-Review dieses Dokuments (Runden 1–2, `goldfish_review_report.md`).
+Dazu die Messungen aus dem Plan und der 5-Minuten-Mitschnitt gegen den echten Mattermost-Server.
 Nutzenangaben sind Schätzungen, solange keine Messung genannt ist.
 
 ## Befunde
@@ -45,15 +44,15 @@ Entscheidung: **umsetzen**, **messen** (nur übernehmen, wenn die Messung den Nu
 
 | # | Pri | Befund | Maßnahme | Entscheidung |
 |---|---|---|---|---|
-| N1 | H | `handle()` läuft in `ws.rs` innerhalb der `select!`-Schleife. Hängt ein REST-Aufruf, gehen keine Pings raus. Der Mattermost-Client hat keinen Timeout. | Ereignisse über einen unbegrenzten `mpsc`-Kanal an einen Handler-Task je Sitzung; die Schleife liest und pingt nur und prüft je Durchlauf `tx.is_closed()` (→ `End::Closed`). Am Sitzungsende wird der Handler-Task abgebrochen; wartende Ereignisse verfallen (das `online` der nächsten Sitzung lässt das Frontend nachladen). Timeouts: `connect_timeout(10 s)` am Client; `RequestBuilder::timeout(30 s)` in `get`, `post_json`, `list_messages`, `edit`, `delete`, `react`, `unreact`, `set_favorite`, `set_muted`, `mark_read`, `POST /posts`, `login`, `restore`. Ohne Gesamt-Timeout: Upload, Download, Avatar, Upgrade. | umsetzen |
-| N2 | H | Jede fremde `posted`-Nachricht ruft `fetch_space` (3–4 REST-Aufrufe). | Das Backend rechnet den Space fort: `spaces: Mutex<HashMap<String, Space>>` aus `list_spaces`/`fetch_space`. Bei `posted` in bekanntem Kanal: `last_active = create_at`, `msg_count += 1`; nur wenn `!mine && !is_reply`: `unread = true`, `mention_count += 1` bei Erwähnung oder in DMs/Gruppen. Dann `SpaceUpdated` wie heute (0 REST-Aufrufe). Unbekannter Kanal → `fetch_space`. Gelesen-Ereignisse (`channel_viewed`) aktualisieren den gemerkten Space mit. | umsetzen |
+| N1 | H | `handle()` läuft in `ws.rs` innerhalb der `select!`-Schleife. Hängt ein REST-Aufruf, gehen keine Pings raus. Der Mattermost-Client hat keinen Timeout. | `handle()` in `tokio::time::timeout(10 s, …)`; bei Ablauf verfällt das Ereignis wie heute bei Fehlern (Abstand zwischen Pings höchstens 30 s). REST-Timeout 30 s zentral in `send_req`; neues `send_file_req` ohne Gesamt-Timeout für Upload, Download, Avatar und Server-Emoji; `login`/`restore` setzen `.timeout(30 s)` selbst; WebSocket-Upgrade ohne. `connect_timeout(10 s)` am Client. | umsetzen |
+| N2 | H | Jede fremde `posted`-Nachricht ruft `fetch_space` (3–4 REST-Aufrufe). | Das Backend rechnet den Space fort: `spaces: Mutex<HashMap<String, Space>>` aus `list_spaces`/`fetch_space`. Bei `posted` (auch eigene) in bekanntem Kanal: `last_active = create_at`, `msg_count += 1`; bei fremden: `unread = true` wenn `!is_reply`; `mention_count += 1` wenn `mentions_me || (kind != Channel && !muted && !is_reply)` (gleiche Regel wie `markUnread`/`notify`). Danach `SpaceUpdated` (0 REST-Aufrufe). Unbekannter Kanal → `fetch_space`. `channel_viewed`/`multiple_channels_viewed` bleiben bei `fetch_space` (selten) und aktualisieren den gemerkten Space. Erwähnungen in Thread-Antworten zählen wie heute über den Server erst beim nächsten `list_spaces` (bewusst). | umsetzen |
 | N3 | M | Jede WebSocket-Sitzung meldet `online`; das Frontend lädt dann in jedem Fenster alle Spaces. | Nur Frontend: jedes `online` → `catchUp()` in jedem Fenster; `loadSpaces()` nur im Hauptfenster (ein `list_spaces` je Abriss hält Ungelesen-Stände aus der Lücke richtig; Abrisse sind seit dem Ping selten). Backend unverändert. | umsetzen, [ADR 01](../adr/01_mattermost_websocket.md) |
 | N4 | M | Stiller Reconnect wartet immer 1 s. Schließt der Server sofort nach dem Upgrade, entsteht eine Schleife ohne Offline-Meldung. | „War verbunden“ nur bei einer Sitzung > 30 s; sonst Backoff und Offline-Meldung. | umsetzen |
-| N5 | M | Google: offener Space wird auch ohne Fensterfokus alle 5 s abgefragt. | Bei jedem `WindowEvent::Focused`/`Destroyed` `webview_windows().values().any(is_focused)` neu auswerten und in `AppState.focused: watch::Sender<bool>` (Start `true`) schreiben; `notify()` liest diesen Wert statt eigener Abfrage. `ChatBackend::start_events` bekommt `focused: watch::Receiver<bool>` (Mattermost ignoriert ihn). Poller: offener Space mit `active_secs` bei Fokus, sonst `poll.unfocused_secs` (neu, Standard 30); bei Wechsel wird das Interval neu erzeugt. Space-Liste bleibt `spaces_secs`. | umsetzen, [ADR 07](../adr/07_polling_fokus.md) |
+| N5 | M | Google: offener Space wird auch ohne Fensterfokus alle 5 s abgefragt. | Bei jedem `WindowEvent::Focused`/`Destroyed` `webview_windows().values().any(is_focused)` neu auswerten und in `AppState.focused: watch::Sender<bool>` (Start `true`) schreiben; `notify()` liest diesen Wert. `ChatBackend::start_events` bekommt `focused: watch::Receiver<bool>` (Mattermost ignoriert ihn). Poller: ohne Fokus entfällt `poll_active`, und `poll_spaces` behandelt den offenen Space wie jeden anderen (Takt `spaces_secs`); mit Fokus wie heute. Kein neuer Konfigurationsschlüssel. | umsetzen, [ADR 07](../adr/07_polling_fokus.md) |
 | N6 | M | Google: ein Fehler in `messages_since` für einen Space verwirft alle Ereignisse des Durchlaufs, bei jedem Tick erneut. | `is_transient` (`poll.rs`) entscheidet: transient → Abbruch wie bisher; sonst Fehler loggen, Space überspringen und seinen neuen Eintrag in `State.spaces` übernehmen (seine Nachrichten dieses Durchlaufs verfallen, kein Dauerabruf). | umsetzen |
 | N7 | M | Google: 429 wird als „offline“ gemeldet. | Poller meldet bei 429 kein `offline`; Backoff bleibt. `Retry-After` erst auswerten, wenn ein Live-Test zeigt, dass Google ihn sendet. | umsetzen |
-| N8 | N | Google: ein Fehler beim Auflösen eines DM-Namens (`space_name`) lässt `list_spaces` scheitern. | Rückfall auf die Space-ID; gemerkt nur bei nicht-transienten Fehlern. | umsetzen |
-| N9 | N | Mattermost: Nutzer-IDs ohne Treffer (gelöschte Nutzer, Bots) werden bei jedem Post erneut angefragt. | Ersatz-`ApiUser` mit leerem `username` eintragen; `space_name` behandelt leer wie fehlend (DM-Name bleibt `display_name`). | umsetzen |
+| N8 | N | Google: ein Fehler beim Auflösen eines DM-Namens (`space_name`) lässt `list_spaces` scheitern. | Rückfall auf die Space-ID; gemerkt nur bei nicht-transienten Fehlern (Muster wie `user_name`). `is_transient` in `poll.rs` wird `pub(super)`. | umsetzen |
+| N9 | N | Mattermost: Nutzer-IDs ohne Treffer (gelöschte Nutzer, Bots) werden bei jedem Post erneut angefragt. | Ersatz-`ApiUser` mit leerem `username` eintragen; `space_name` und `map_post` behandeln leer wie fehlend (DM-Name bleibt `display_name`, Absender bleibt die ID). | umsetzen |
 
 ### Lokale Daten und CPU
 
@@ -62,7 +61,7 @@ Entscheidung: **umsetzen**, **messen** (nur übernehmen, wenn die Messung den Nu
 | L1 | H | SQLite im WAL-Modus mit Standard `synchronous=FULL`: fsync je Ereignis, unter dem Store-Mutex. | `PRAGMA synchronous=NORMAL` in `Store::init`. | umsetzen |
 | L2 | M | `notify()` und `set_space_flag` lesen alle Spaces aus JSON, um einen zu finden. | `Store::space(account, id)`. | umsetzen |
 | L3 | M | Trimmen auf 500 Nachrichten läuft bei jedem Einzelereignis. | – | nein (vorerst): indiziertes `DELETE`, das teure fsync entfällt mit L1 |
-| L4 | M | Seitenleiste filtert und sortiert je Render dreifach, auch bei jeder Mausbewegung beim Ziehen; `sortSpaces` sortiert bei jedem `space_updated`; `unreadTotal` zweimal je Konto. | Ein `$derived` für alle Bereiche, gemeinsamer Collator, `drag` nur bei Zieländerung, `unreadTotal` als `$derived`. | umsetzen |
+| L4 | M | Seitenleiste filtert und sortiert je Render dreifach, auch bei jeder Mausbewegung beim Ziehen; `sortSpaces` sortiert bei jedem `space_updated`; `unreadTotal` zweimal je Konto. | Ein `$derived` für alle Bereiche, gemeinsamer Collator, `drag` nur bei Zieländerung, `unreadTotal` als `$derived`; `sortSpaces` in `chat.svelte.ts` entfällt (die Seitenleiste sortiert selbst). | umsetzen |
 | L5 | N | `day()` mehrfach je Nachricht und Render. | – | nein: nur bei S2/S3 relevant |
 | L6 | N | Store-Zugriffe synchron auf Tokio-Threads. | – | nein (vorerst): L1 nimmt den Großteil der Last |
 
@@ -84,8 +83,8 @@ Alle K-Punkte: umsetzen.
 
 | # | Pri | Befund | Maßnahme | Entscheidung |
 |---|---|---|---|---|
-| X1 | M | `send_message(files)` liest und `download_attachment(dest)` schreibt beliebige Pfade aus dem Frontend. | Dialoge im Backend (blockierende API von `tauri-plugin-dialog` in `spawn_blocking`). `save_attachment(account, attachment) -> bool` (`false` = Abbruch; bei Fehler bleibt im Frontend der Rückfall `openUrl`); `download_attachment` entfällt. `pick_files() -> Vec<PickedFile { id: u64, name }>`, Pfade in `AppState.picked`; `send_message(…, files: Vec<u64>)`; IDs gelten bis zum erfolgreichen Senden. Unbekannte ID → „Datei nicht mehr verfügbar, bitte neu wählen“. `dialog:default` fällt aus der Capability. Kein Datei-Drag&Drop. | umsetzen, [ADR 06](../adr/06_dateipfade_ipc.md) |
-| X2 | N | `cache.sqlite` (Klartext) und Datenverzeichnis mit Standard-umask; `chatty.toml`/`accounts.json` nicht atomar geschrieben. | `private_dir(&Path)` setzt 0700 (beim Start für Konfigurations- und Datenverzeichnis, auch bestehende); `write_private(&Path, &[u8])` schreibt über eine Temp-Datei mit 0600 und `rename`. | umsetzen |
+| X1 | M | `send_message(files)` liest und `download_attachment(dest)` schreibt beliebige Pfade aus dem Frontend. | Dialoge im Backend (Callback-API von `tauri-plugin-dialog` mit `oneshot`-Kanal). `save_attachment(account, attachment) -> bool` (`false` = Abbruch; bei Fehler bleibt im Frontend der Rückfall `openUrl`); `download_attachment` entfällt. `pick_files() -> Vec<PickedFile { id: u64, name }>`; Zustand `AppState.picked: Picked`, `struct Picked(Mutex<HashMap<u64, PathBuf>>)` mit Zähler-IDs und `add(Vec<PathBuf>) -> Vec<PickedFile>`, `paths(&[u64]) -> Result<Vec<PathBuf>>` (unbekannt → „Datei nicht mehr verfügbar, bitte neu wählen“), `remove(&[u64])` nach erfolgreichem Senden. `Composer` leert seine Liste erst nach Erfolg. `dialog:default` fällt aus der Capability, `@tauri-apps/plugin-dialog` aus `package.json`. Kein Datei-Drag&Drop. | umsetzen, [ADR 06](../adr/06_dateipfade_ipc.md) |
+| X2 | N | `cache.sqlite` (Klartext) und Datenverzeichnis mit Standard-umask; `chatty.toml`/`accounts.json` nicht atomar geschrieben. | `config_dir()`/`data_dir()` setzen 0700 (auch bestehende Verzeichnisse); `write_private(&Path, &[u8])` schreibt über eine Temp-Datei mit 0600 und `rename` und ersetzt die Logik in `save_config` und `save_accounts`. Unter Windows nur Temp-Datei und `rename` (Rechte über das Profilverzeichnis). | umsetzen |
 | X3 | N | CSP erlaubt `img-src https:`, genutzt wird es nicht. | `img-src 'self' data: avatar: http://avatar.localhost`. | umsetzen |
 | X4 | N | Keyring-Aufrufe blockieren Tokio-Threads. | – | nein: nur bei Anmelden, Start und Löschen, kein Betriebsproblem |
 
@@ -95,7 +94,7 @@ Kein Befund: Markdown-Rendering (`format.ts`) escaped vor dem Ersetzen, Links nu
 
 | # | Pri | Befund | Maßnahme | Entscheidung |
 |---|---|---|---|---|
-| B1 | M | aws-lc-rs kommt nur über chattys reqwest-Feature `rustls` (`cargo tree -e features -i aws-lc-rs`); ring ist über `rustls-webpki` ohnehin im Baum. aws-lc-rs braucht cmake/C (Windows: nasm). | reqwest mit `rustls-no-provider`, `rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }`. `backend::init_tls()` (idempotent per `std::sync::Once`) installiert ring als Standard; Aufruf in beiden `http_client()` und in `lib.rs::run` (deckt Tests und Beispiele ab). | umsetzen, [ADR 03](../adr/03_tls_ring.md) |
+| B1 | M | aws-lc-rs kommt nur über chattys reqwest-Feature `rustls` (`cargo tree -e features -i aws-lc-rs`); ring ist über `rustls-webpki` ohnehin im Baum. aws-lc-rs braucht cmake/C (Windows: nasm). | reqwest mit `rustls-no-provider`, `rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }`. `backend::init_tls()` (idempotent per `std::sync::Once`) installiert ring als Standard; Aufruf in `lib.rs::run` und in beiden `http_client()`. `GoogleBackend::for_test` baut seinen Client über `http_client()` statt `Client::new()`, damit Tests den Provider haben. | umsetzen, [ADR 03](../adr/03_tls_ring.md) |
 | B2 | N | tokio-tungstenite mit `rustls-tls-webpki-roots` und `connect`, obwohl das Upgrade über reqwest läuft. | `default-features = false, features = ["handshake"]`; Modulkommentar in `ws.rs` anpassen. | umsetzen |
 | B3 | N | reqwest-Feature `stream` unbenutzt. | Feature entfernen. | umsetzen |
 
@@ -113,22 +112,32 @@ Reihenfolge: P0 → P1 → P2 → P3 → P4 → P6 → P5.
 ### P0 Testwerkzeug
 
 Dateien (neu): `scripts/mm-test-server.sh`, `src-tauri/examples/mm_login.rs`,
-`src-tauri/examples/mm_watch.rs`; ändern: `.gitignore` (`build/` ist schon ausgenommen, prüfen),
-`src-tauri/src/backend/mattermost/it.rs` (Kopfkommentar: Aufruf über `build/mm-test.env`).
+`src-tauri/examples/mm_watch.rs`; ändern: `src-tauri/src/backend/mattermost/it.rs` (Kopfkommentar).
 
-- `scripts/mm-test-server.sh [--messages N] [--channels N]` startet `mattermost/mattermost-preview` als
-  `chatty-mm` (Port 8065) und `nginx:stable` als `chatty-mm-proxy` (Port 8066, reicht HTTP und WebSocket an
-  8065 durch). Legt `tester`, `anna`, `bert`, Teams `team1`/`team2`, Kanal „Dev“ (tester und anna Mitglied),
-  die DM tester–anna, N Nachrichten in „Dev“ und N zusätzliche Kanäle in `team1` an. Passwörter zufällig.
-  Schreibt `build/mm-test.env` mit `CHATTY_MM_URL`, `CHATTY_MM_PROXY_URL`, `CHATTY_MM_USER`,
-  `CHATTY_MM_PASSWORD`, `CHATTY_MM_USER2`, `CHATTY_MM_PASSWORD2`, `CHATTY_MM_USER3`, `CHATTY_MM_PASSWORD3`,
-  `CHATTY_MM_DEV`. Gibt keine Passwörter aus.
-- `cargo run --example mm_login -- <konto-id> [--delete]` legt das Session-Token von `CHATTY_MM_USER`
-  (über `CHATTY_MM_PROXY_URL`) im Keyring ab bzw. löscht den Eintrag.
-- `cargo run --example mm_watch -- <konto-id> <sekunden>` gibt alle Backend-Ereignisse mit Zeitstempel aus.
+`scripts/mm-test-server.sh` (bash, idempotent: vorhandene Container werden ersetzt):
+- Startet `mattermost/mattermost-preview` als `chatty-mm` (Port 8065) und wartet auf `/api/v4/system/ping`.
+- Startet `nginx:stable` als `chatty-mm-proxy` mit `--network host` auf Port 8066, reicht HTTP und WebSocket an
+  `127.0.0.1:8065` durch. `--delay` setzt `limit_rate 2k` für `/api/v4/channels/*/posts`, damit „ältere laden“
+  sichtbar lange dauert.
+- Legt per REST an: `tester` (erster Nutzer, damit Systemadmin), `anna`, `bert`; Teams `team1` und `team2`,
+  `tester` in beiden, `anna` in `team1`; Kanal „Dev“ in `team1` mit `tester` und `anna`; die DM tester–anna.
+- `--messages N` (Standard 0): `anna` sendet N nummerierte Nachrichten in „Dev“.
+  `--channels N` (Standard 0): `tester` legt N offene Kanäle `c-<n>` in `team1` an und ist Mitglied.
+- `--send N`: nur N weitere Nachrichten als `anna` an Port 8065 in „Dev“ senden (für Trenn-Tests), ohne Neuaufbau.
+- Schreibt `src-tauri/target/mm-test.env` (außerhalb von `build/`, das der Frontend-Build leert) mit
+  `CHATTY_MM_URL`, `CHATTY_MM_PROXY_URL`, `CHATTY_MM_USER`, `CHATTY_MM_PASSWORD`, `CHATTY_MM_USER2`,
+  `CHATTY_MM_PASSWORD2`, `CHATTY_MM_USER3`, `CHATTY_MM_PASSWORD3`, `CHATTY_MM_DEV`. Passwörter zufällig, keine
+  Ausgabe.
 
-Nachweis: Skript zweimal hintereinander ausführbar (vorhandene Container werden ersetzt); Integrationstest
-mit `set -a; . build/mm-test.env` grün.
+Beispiele:
+- `cargo run --example mm_login -- <konto-id> [--delete]` legt das Session-Token von `CHATTY_MM_USER` über
+  `CHATTY_MM_PROXY_URL` im Keyring ab bzw. löscht den Eintrag.
+- `cargo run --example mm_watch -- <konto-id> <server-url> <sekunden>` stellt das Konto mit `restore` her und
+  gibt alle Backend-Ereignisse mit Zeitstempel aus. Für den echten Server: Konto-ID und URL aus
+  `~/.config/chatty/accounts.json`.
+
+Nachweis: Skript zweimal hintereinander ausführbar; Integrationstest mit `set -a; . src-tauri/target/mm-test.env`
+grün.
 
 ### P1 Korrektheit (K1–K7)
 
@@ -139,9 +148,9 @@ Nachweis:
 - Unit-Test `store.rs`: `delete_account` entfernt `spaces`, `messages`, `flags`.
 - UI (Konto über `CHATTY_MM_PROXY_URL`): Space A öffnen, sofort B, sofort A → nur Nachrichten von A, keine
   Dopplung.
-- UI: in „Dev“ (300 Nachrichten) hochscrollen, während „ältere laden“ läuft Space wechseln → neuer Space
-  ohne fremde Nachrichten.
-- UI: `docker stop chatty-mm-proxy`, 60 Nachrichten als `anna` direkt an Port 8065 senden,
+- Testserver mit `--messages 300 --delay`. UI: in „Dev“ hochscrollen, während „ältere laden“ läuft (gedrosselt)
+  Space wechseln → neuer Space ohne fremde Nachrichten.
+- UI: `docker stop chatty-mm-proxy`, `scripts/mm-test-server.sh --send 60`,
   `docker start chatty-mm-proxy` → nach dem Reconnect alle 60 sichtbar, in richtiger Reihenfolge; dasselbe,
   während „ältere laden“ läuft.
 - UI: Space-Wechsel → kein „Anfang von …“ während des Ladens; Verlauf steht unten.
@@ -149,21 +158,28 @@ Nachweis:
 ### P2 Netz Mattermost (N1, N2, N3, N4, N9)
 
 Dateien (ändern): `src-tauri/src/backend/mattermost/ws.rs`, `src-tauri/src/backend/mattermost/mod.rs`,
-`src-tauri/src/backend/mattermost/it.rs`, `src/lib/chat.svelte.ts`.
+`src-tauri/src/backend/mattermost/api.rs` (N9 in `map_post`), `src-tauri/src/backend/mattermost/it.rs`,
+`src/lib/chat.svelte.ts`.
 
-Nachweis (Integrationstest):
-- Aufrufzähler: `AtomicUsize` im `MattermostBackend`, erhöht nur in `send_req`, unter `#[cfg(test)]`
-  lesbar. Fremde Nachricht in „Dev“ von `anna` → Differenz 0, `SpaceUpdated` mit `unread` und
-  `mention_count > 0` (bestehende Prüfung bleibt); Thread-Antwort von `anna` → `SpaceUpdated` ohne
-  `unread`-Wechsel; erste DM von `bert` → Differenz ≥ 1 (Wert wird ausgegeben).
-- Trennung: Sitzung 35 s laufen lassen, dann `docker stop chatty-mm-proxy` und `docker start chatty-mm-proxy`
-  per `std::process::Command` (nur wenn `CHATTY_MM_PROXY_URL` gesetzt) → innerhalb von 15 s erneut
-  `Status { online: true }`, kein `online: false` (stiller Reconnect).
+Nachweis (Integrationstest gegen einen frisch aufgesetzten Testserver):
+- Aufrufzähler: `AtomicUsize` im `MattermostBackend`, erhöht in `send_req`/`send_file_req`, unter
+  `#[cfg(test)]` lesbar.
+- Fremde Nachricht in „Dev“ von `anna` → Zählerdifferenz 0, `SpaceUpdated` mit `unread` und `mention_count > 0`
+  (bestehende Prüfung bleibt).
+- Nach dem bestehenden `mark_read`/`channel_viewed`: Thread-Antwort von `anna` ohne Erwähnung → `SpaceUpdated`
+  mit `!unread` und unverändertem `mention_count`.
+- `bert` meldet sich an (`CHATTY_MM_USER3`), legt die DM mit `tester` an (`POST /channels/direct`) und sendet →
+  Zählerdifferenz ≥ 1 (Wert wird ausgegeben), danach `SpaceUpdated` der neuen DM.
+- Trennung: zweites Backend per `restore` über `CHATTY_MM_PROXY_URL`, `start_events`, 35 s warten,
+  `docker stop chatty-mm-proxy` und `docker start chatty-mm-proxy` per `std::process::Command` → innerhalb von
+  15 s `Status { online: true }`; ein kurzes `online: false` ist erlaubt.
+- N4: gleiches Backend, Proxy in den ersten 5 s einer Sitzung neu starten → `Status { online: false }` wird
+  gemeldet (keine stille Schleife).
 - Mitschnitt `mm_watch` 5 min am echten Server: kein `status`-Ereignis außer dem ersten.
 
 ### P3 Speicher (S7, S1, S4; S2/S3 nur messen)
 
-Dateien: neu `scripts/ram.sh`; ändern `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` (`webkit2gtk`, Linux),
+Dateien: neu `scripts/ram.sh`; ändern `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` (`webkit2gtk`, Linux), `konzept/optimierung.md` (Tabelle „Ziel“), `adr/04_webview_speicher.md` (Status),
 `src-tauri/src/app.rs` (`setup`, ggf. `open_space_window`), `src/lib/chat.svelte.ts` und
 `src/routes/+page.svelte` (S4), `adr/00_plan.md` (Messwerte).
 
@@ -177,51 +193,52 @@ Dateien (ändern): `src-tauri/src/store.rs`, `src-tauri/src/app.rs`, `src/lib/co
 
 Nachweis:
 - Unit-Test `store.rs`: `space()` findet genau einen Eintrag, `None` bei unbekannter ID.
-- UI in `npm run tauri dev` mit `scripts/mm-test-server.sh --channels 500`: Seitenleiste ziehen → in der
-  Timeline des WebInspectors kein Eintrag > 50 ms.
+- UI in `npm run tauri dev` mit `scripts/mm-test-server.sh --channels 500`: einen Kanal in „Favoriten“ ziehen →
+  in der Timeline des WebInspectors kein Eintrag > 50 ms (vorher/nachher notieren).
 
 ### P6 Härtung und Build (X1–X3, B1–B3)
 
 Dateien (ändern): `src-tauri/src/app.rs` (`pick_files`, `save_attachment`, `send_message`,
 `download_attachment` entfernen), `src-tauri/src/lib.rs` (Kommandos, `init_tls`),
 `src-tauri/src/backend/mod.rs` (`init_tls`), `src-tauri/src/backend/mattermost/mod.rs` und
-`src-tauri/src/backend/google/mod.rs` (`http_client` ruft `init_tls`), `src-tauri/src/backend/mattermost/ws.rs`
+`src-tauri/src/backend/google/mod.rs` (`http_client` ruft `init_tls`, `for_test` nutzt `http_client`), `src-tauri/src/backend/mattermost/ws.rs`
 (Kommentar), `src-tauri/src/config.rs` (`private_dir`, `write_private`), `src-tauri/tauri.conf.json` (CSP),
 `src-tauri/capabilities/default.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src/lib/api.ts`,
 `src/lib/chat.svelte.ts` (`send` mit IDs), `src/lib/components/Composer.svelte` (Anzeige `name`, Schlüssel
-`id`), `src/lib/components/MessageItem.svelte`, `.github/workflows/build.yml`.
+`id`), `src/lib/components/MessageItem.svelte`, `package.json`, `package-lock.json`, `adr/00_plan.md` (Binary-Größe),
+`.github/workflows/build.yml` (Schritt im Arbeitsverzeichnis `src-tauri`).
 
 Nachweis:
 - CI-Schritt `! cargo tree --target all -i aws-lc-rs >/dev/null 2>&1` grün; Release-Binary-Größe
   vorher/nachher in `adr/00_plan.md`.
 - Unit-Tests: `config.rs` (`private_dir` → 0700, `write_private` → 0600, Inhalt vollständig);
-  `app.rs` (`take_picked` mit unbekannter ID → Fehler, bekannte ID bleibt bis `remove_picked`).
+  `Picked` (`paths` mit unbekannter ID → Fehler; bekannte ID bleibt bis `remove`).
 - UI: Anhang wählen und senden; Anhang speichern; Speichern-Dialog abbrechen → keine Meldung.
 
 ### P5 Google (N5–N8)
 
 Dateien (ändern): `src-tauri/src/backend/mod.rs` (`start_events`-Signatur),
 `src-tauri/src/backend/google/{mod,poll}.rs`, `src-tauri/src/backend/mattermost/mod.rs` (Signatur),
-`src-tauri/src/backend/mattermost/it.rs` (Aufruf `start_events`), `src-tauri/src/app.rs` und
-`src-tauri/src/lib.rs` (Fokus-`watch`, `on_window_event`, `notify`), `src-tauri/src/config.rs`
-(`unfocused_secs`), `src-tauri/Cargo.toml` und `Cargo.lock` (tokio-Feature `test-util` als
-dev-dependency), `usage.md`.
+`src-tauri/src/backend/mattermost/it.rs` und `src-tauri/examples/mm_watch.rs` (Aufruf `start_events`),
+`src-tauri/src/app.rs` und `src-tauri/src/lib.rs` (Fokus-`watch`, `on_window_event`, `notify`), `usage.md`.
 
-Nachweis (Unit-Tests im Testmodul von `google/mod.rs`, wo der HTTP-Mock liegt; Zeit über
-`tokio::time::pause` und `tokio::time::Instant`):
-- 429 → kein `Status { online: false }`, nächster Versuch nach Backoff.
-- Ein Space liefert 404 → übrige Spaces melden ihre Ereignisse; im nächsten Tick kein Abruf des 404-Space.
-- DM-Name nicht auflösbar (404) → `list_spaces` liefert den Space mit seiner ID als Namen.
-- Fokus `false` → Abstand der Abrufe des offenen Space ≥ `unfocused_secs`; Fokus `true` → wieder `active_secs`.
+Nachweis (Unit-Tests im Testmodul von `google/mod.rs`, wo der HTTP-Mock liegt; ohne Zeitsteuerung):
+- Entscheidungen als reine Funktionen in `poll.rs`: „Status bei Fehler“ (429 → kein `offline`), „offenen Space
+  überspringen“ (nur mit Fokus).
+- Mock: ein Space liefert 404 in `messages_since` → übrige Spaces melden ihre Ereignisse; im nächsten Durchlauf
+  kein Abruf des 404-Space.
+- Mock: DM-Name nicht auflösbar (404) → `list_spaces` liefert den Space mit seiner ID als Namen.
 - Live-Test mit Google-Konto, sobald ein OAuth-Client existiert.
 
 ## Messverfahren RAM
 
 1. `scripts/mm-test-server.sh --messages 300` (P0).
-2. `scripts/ram.sh [--wait-key] [sekunden=60]`: legt per `mm_login` den Keyring-Eintrag `chatty-ram-test` an
-   (der Keyring ist nicht über `XDG_*` isolierbar), schreibt in ein temporäres `XDG_CONFIG_HOME` eine
-   `accounts.json` mit `{ "id": "chatty-ram-test", "kind": "mattermost", "server": $CHATTY_MM_PROXY_URL,
-   "label": "ram-test", "login": $CHATTY_MM_USER }`, startet den Release-Build mit isoliertem
+2. `scripts/ram.sh [--bin PFAD] [--wait-key] [sekunden=60]` liest `src-tauri/target/mm-test.env`, legt per
+   `mm_login` den Keyring-Eintrag `chatty-ram-test` an (der Keyring ist nicht über `XDG_*` isolierbar), schreibt
+   in ein temporäres `XDG_CONFIG_HOME` die Datei `chatty/accounts.json` mit dem Array `[{ "id": "chatty-ram-test",
+   "kind": "mattermost", "server": $CHATTY_MM_PROXY_URL, "label": "ram-test", "login": $CHATTY_MM_USER }]`,
+   startet das Binary (Standard `src-tauri/target/release/chatty`; für S1 der Build des Vorgänger-Commits, vorher
+   nach `src-tauri/target/chatty-before` kopiert) mit isoliertem
    `XDG_CONFIG_HOME`/`XDG_DATA_HOME`, wartet die Sekunden (oder mit `--wait-key` auf Enter), summiert PSS und
    RSS aller Prozesse des Baums (Kinder rekursiv über die Eltern-PID), gibt für den Hauptprozess zusätzlich die
    S7-Aufschlüsselung aus, beendet die Prozessgruppe und löscht den Keyring-Eintrag (`mm_login --delete`).

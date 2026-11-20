@@ -15,7 +15,7 @@ nasm, und verlängert CI-Builds. Weil zwei Provider vorhanden sind, wählt rustl
 reqwest mit `rustls-no-provider`, dazu `rustls = { version = "0.23", default-features = false,
 features = ["ring", "std", "tls12"] }`. `backend::init_tls()` installiert
 `rustls::crypto::ring::default_provider()` einmalig (`std::sync::Once`) als Standard; aufgerufen in
-`lib.rs::run` und in beiden `http_client()`, damit auch Tests und Beispiele den Provider haben. tokio-tungstenite mit `default-features = false, features = ["handshake"]`.
+`lib.rs::run` und in beiden `http_client()`; `GoogleBackend::for_test` baut seinen Client über `http_client()`. tokio-tungstenite mit `default-features = false, features = ["handshake"]`.
 
 ## Alternativen
 

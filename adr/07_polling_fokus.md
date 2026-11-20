@@ -16,10 +16,9 @@ Projekt teilt sich 3000 Lesezugriffe pro Minute mit allen Nutzern.
   Fensterwechsel nicht. `notify()` liest denselben Wert.
 - `ChatBackend::start_events` bekommt zusätzlich `focused: watch::Receiver<bool>`; Mattermost
   ignoriert ihn.
-- Der Google-Poller fragt den offenen Space mit `poll.active_secs` ab, solange ein Fenster fokussiert
-  ist, sonst mit dem neuen Schlüssel `poll.unfocused_secs` (Standard 30). Bei einem Wechsel erzeugt der
-  Poller das Interval neu.
-- Die Space-Liste bleibt bei `poll.spaces_secs`, damit Benachrichtigungen nicht später kommen.
+- Ohne Fokus entfällt die schnelle Abfrage des offenen Space; `poll_spaces` behandelt ihn wie jeden
+  anderen Space (Takt `poll.spaces_secs`). Mit Fokus wie bisher `poll.active_secs`. Kein neuer
+  Konfigurationsschlüssel.
 
 ## Alternativen
 
@@ -30,5 +29,5 @@ Projekt teilt sich 3000 Lesezugriffe pro Minute mit allen Nutzern.
 
 ## Folgen
 
-- Ohne Fokus bis zu 30 s Verzögerung im offenen Space; neue Nachrichten in anderen Spaces kommen
-  weiter spätestens nach `spaces_secs`.
+- Ohne Fokus kommen neue Nachrichten im offenen Space nach spätestens `spaces_secs`; Bearbeitungen und
+  Reaktionen erst, wenn wieder ein Fenster den Fokus hat.
