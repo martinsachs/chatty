@@ -102,6 +102,12 @@ Nicht verfolgt: Umstieg von SvelteKit auf reines Svelte (einige 10 KB JS); virtu
 
 ## Umsetzung in Paketen
 
+**Stand 2026-11-20:** P0–P6 umgesetzt (Commits `e8aee26` P0, `b482cea` P1, `eda38da` P2, `e79635a` P3, `a53eacb` P4,
+`95e52c2` P6, `f9a214c` P5). Abweichungen: S1 gemessen ohne Nutzen und verworfen; S2/S3-Messung (Hochscrollen)
+und die manuellen UI-Prüfschritte stehen aus; P1-Logik zusätzlich automatisch über `scripts/test-chat-store.mjs`
+(CI). P5 nur gegen den HTTP-Mock.
+
+
 Jedes Paket ist ein Commit mit grüner CI (`cargo test`, `cargo clippy --all-targets -D warnings`,
 `svelte-check`). Der Mattermost-Integrationstest (`backend/mattermost/it.rs`, `#[ignore]`) läuft manuell
 gegen den Testserver aus P0. UI-Nachweise sind manuelle Prüfschritte mit erwartetem Ergebnis (kein
