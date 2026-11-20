@@ -81,7 +81,7 @@ class Chat {
   /** Erst Cache zeigen, dann vom Server aktualisieren. */
   async loadSpaces(account: string) {
     const cached = await api.cachedSpaces(account).catch(() => []);
-    if (cached.length && !this.spaces[account]) this.spaces[account] = sortSpaces(cached);
+    if (cached.length && !this.spaces[account]) this.spaces[account] = cached;
     const online = this.accounts.find((a) => a.id === account)?.online;
     if (!online) return;
     if (!this.customEmojis[account]) {
@@ -91,7 +91,7 @@ class Chat {
         .catch(() => {});
     }
     try {
-      this.spaces[account] = sortSpaces(await api.listSpaces(account));
+      this.spaces[account] = await api.listSpaces(account);
     } catch (e) {
       this.toast(`Spaces laden: ${e}`, "error");
     }
@@ -115,7 +115,7 @@ class Chat {
   async joinSpace(account: string, id: string) {
     const space = await this.guard(api.joinSpace(account, id));
     if (!space) return;
-    this.spaces[account] = sortSpaces([...(this.spaces[account] ?? []).filter((s) => s.id !== id), space]);
+    this.spaces[account] = [...(this.spaces[account] ?? []).filter((s) => s.id !== id), space];
     await this.openSpace(account, id);
   }
 
@@ -339,7 +339,7 @@ class Chat {
         const space = visible ? { ...event.space, unread: false, mention_count: 0 } : event.space;
         if (i >= 0) list[i] = space;
         else list.push(space);
-        this.spaces[account] = sortSpaces(list);
+        if (!this.spaces[account]) this.spaces[account] = list;
         break;
       }
       case "message_created":
@@ -377,10 +377,6 @@ class Chat {
       }
     }
   }
-}
-
-function sortSpaces(list: Space[]): Space[] {
-  return [...list].sort((a, b) => a.name.localeCompare(b.name, "de"));
 }
 
 export const chat = new Chat();

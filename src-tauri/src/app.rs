@@ -199,11 +199,7 @@ fn notify(app: &AppHandle, state: &AppState, account: &str, m: &Message) {
     if focused && visible {
         return;
     }
-    let space = state
-        .store()
-        .spaces(account)
-        .ok()
-        .and_then(|s| s.into_iter().find(|s| s.id == m.space_id));
+    let space = state.store().space(account, &m.space_id).ok().flatten();
     let is_dm = space.as_ref().is_some_and(|s| s.kind != SpaceKind::Channel);
     let muted = space.as_ref().is_some_and(|s| s.muted);
     if !(is_dm && !muted || m.mentions_me) {
@@ -427,7 +423,7 @@ pub async fn set_space_flag(
         )?;
     }
     // Cache sofort angleichen (Benachrichtigungen lesen ihn).
-    if let Some(mut s) = store.spaces(&account)?.into_iter().find(|s| s.id == space) {
+    if let Some(mut s) = store.space(&account, &space)? {
         if let Some(f) = favorite {
             s.favorite = f;
         }

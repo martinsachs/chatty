@@ -115,14 +115,10 @@
     return s.last_active >= Date.now() - DM_MAX_AGE_MS;
   }
 
-  function inSection(s: Space, sec: Section): boolean {
-    if (sec === "fav") return s.favorite;
-    if (s.favorite) return false;
-    return sec === "channel" ? s.kind === "channel" : s.kind !== "channel";
-  }
+  const collator = new Intl.Collator("de");
 
   function byName(a: Space, b: Space): number {
-    return a.name.localeCompare(b.name, "de");
+    return collator.compare(a.name, b.name);
   }
 
   function compare(a: Space, b: Space): number {
@@ -131,17 +127,25 @@
     return byName(a, b);
   }
 
-  function spacesOf(sec: Section): Space[] {
+  // Alle Bereiche in einem Durchlauf; neu berechnet nur, wenn sich Spaces, Filter, Sortierung oder Reihenfolge ändern.
+  const sectioned = $derived.by(() => {
     const all = (chat.account && chat.spaces[chat.account]) || [];
     const f = filter.trim().toLowerCase();
-    const list = all.filter((s) => inSection(s, sec) && visible(s, f));
-    if (sec !== "fav") return list.sort(compare);
+    const out: Record<Section, Space[]> = { fav: [], channel: [], dm: [] };
+    for (const s of all) {
+      if (visible(s, f)) out[s.favorite ? "fav" : s.kind === "channel" ? "channel" : "dm"].push(s);
+    }
+    out.channel.sort(compare);
+    out.dm.sort(compare);
     // Gezogene Reihenfolge zuerst, neue Favoriten danach nach gewählter Sortierung.
-    const pos = (s: Space) => {
-      const i = favOrder.indexOf(s.id);
-      return i < 0 ? Number.MAX_SAFE_INTEGER : i;
-    };
-    return list.sort((a, b) => pos(a) - pos(b) || compare(a, b));
+    const pos = new Map(favOrder.map((id, i) => [id, i]));
+    const at = (s: Space) => pos.get(s.id) ?? Number.MAX_SAFE_INTEGER;
+    out.fav.sort((a, b) => at(a) - at(b) || compare(a, b));
+    return out;
+  });
+
+  function spacesOf(sec: Section): Space[] {
+    return sectioned[sec];
   }
 
   // Ziehen per Pointer-Events (HTML5-Drag&Drop kollidiert mit Tauris Datei-Drop).
@@ -159,11 +163,10 @@
       const hit = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>(
         "[data-section]",
       );
-      drag = {
-        id: s.id,
-        section: (hit?.dataset.section as Section | undefined) ?? null,
-        target: hit?.dataset.space ?? null,
-      };
+      const section = (hit?.dataset.section as Section | undefined) ?? null;
+      const target = hit?.dataset.space ?? null;
+      // Nur bei neuem Ziel setzen, sonst rendert jede Mausbewegung die Liste neu.
+      if (!drag || drag.section !== section || drag.target !== target) drag = { id: s.id, section, target };
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
@@ -203,9 +206,11 @@
     if (!suppressClick && chat.account) chat.openSpace(chat.account, s.id);
   }
 
-  function unreadTotal(account: string): number {
-    return (chat.spaces[account] ?? []).reduce((n, s) => n + s.mention_count, 0);
-  }
+  const unreadTotal = $derived(
+    Object.fromEntries(
+      chat.accounts.map((a) => [a.id, (chat.spaces[a.id] ?? []).reduce((n, s) => n + s.mention_count, 0)]),
+    ) as Record<string, number>,
+  );
 </script>
 
 <nav class="rail" aria-label="Konten">
@@ -218,7 +223,7 @@
     >
       {initials(a.label)}
       {#if !a.online}<span class="offline" title="nicht verbunden"></span>{/if}
-      {#if unreadTotal(a.id)}<span class="badge">{unreadTotal(a.id)}</span>{/if}
+      {#if unreadTotal[a.id]}<span class="badge">{unreadTotal[a.id]}</span>{/if}
     </button>
   {/each}
   <button class="team add" title="Konto hinzufügen / Einstellungen" onclick={onSettings}>+</button>

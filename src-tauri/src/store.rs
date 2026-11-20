@@ -27,6 +27,7 @@ impl Store {
     fn init(conn: Connection) -> Result<Self> {
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
+             PRAGMA synchronous=NORMAL;
              CREATE TABLE IF NOT EXISTS spaces (
                  account TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL,
                  PRIMARY KEY (account, id));
@@ -108,6 +109,18 @@ impl Store {
             }
         }
         Ok(())
+    }
+
+    /// Einzelnen Space lesen (ohne alle zu deserialisieren).
+    pub fn space(&self, account: &str, id: &str) -> Result<Option<Space>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT json FROM spaces WHERE account = ?1 AND id = ?2")?;
+        let mut rows = stmt.query(params![account, id])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(serde_json::from_str(&row.get::<_, String>(0)?)?)),
+            None => Ok(None),
+        }
     }
 
     pub fn spaces(&self, account: &str) -> Result<Vec<Space>> {
@@ -240,6 +253,9 @@ mod tests {
         s2.unread = false;
         st.put_space("a", &s2).unwrap();
         assert_eq!(st.spaces("a").unwrap(), vec![s2.clone()]);
+        assert_eq!(st.space("a", "s1").unwrap(), Some(s2.clone()));
+        assert_eq!(st.space("a", "nope").unwrap(), None);
+        assert_eq!(st.space("b", "s1").unwrap(), None);
 
         let mut list = vec![s2];
         st.set_flag("a", "s1", Some(true), None).unwrap();
