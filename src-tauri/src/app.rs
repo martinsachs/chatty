@@ -79,7 +79,25 @@ pub fn setup(handle: &AppHandle) -> Result<()> {
     });
     tauri::async_runtime::spawn(event_loop(handle.clone(), app.clone(), rx));
     tauri::async_runtime::spawn(async move { app.restore_all() });
+    size_main_window(handle);
     Ok(())
+}
+
+/// Hauptfenster auf 2/3 des Bildschirms, auf dem es aufgeht, zentriert; erst danach zeigen (kein Springen).
+/// Abgelöste Fenster behalten ihre Größe.
+fn size_main_window(handle: &AppHandle) {
+    let Some(w) = handle.get_webview_window("main") else {
+        return;
+    };
+    if let Ok(Some(m)) = w.current_monitor().or_else(|_| w.primary_monitor()) {
+        let size = m.size();
+        let _ = w.set_size(tauri::PhysicalSize::new(
+            size.width * 2 / 3,
+            size.height * 2 / 3,
+        ));
+        let _ = w.center();
+    }
+    let _ = w.show();
 }
 
 #[derive(Clone, Serialize)]

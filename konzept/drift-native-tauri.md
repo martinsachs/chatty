@@ -51,6 +51,12 @@ offen, mit Grund).
 | Konto entfernen mit Rückfrage | ohne Rückfrage | angeglichen |
 | Einstellungen beim Start öffnen, wenn kein Konto | Hinweis im Hauptfenster | angeglichen |
 
+## Fenster
+
+| Funktion | Status |
+|---|---|
+| Startgröße: Hauptfenster 2/3 des Bildschirms, zentriert, erst danach sichtbar (Auftrag 2026-11-21) | gleich (beide); abgelöste Tauri-Fenster 480×640 |
+
 ## Optiken
 
 Tauri-Optiken sind CSS (Schatten, Rahmen, Schriften aus dem System); native bildet Farben und Schrift nach. Die

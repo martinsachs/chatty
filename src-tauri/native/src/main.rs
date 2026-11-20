@@ -45,12 +45,14 @@ const WINDOW: usize = 300;
 pub const QUICK_EMOJI: [&str; 12] = [
     "👍", "❤️", "😄", "🎉", "👀", "✅", "🙏", "🚀", "😂", "🤔", "👎", "🔥",
 ];
+const INITIAL_SIZE: iced::Size = iced::Size::new(1100.0, 700.0);
+const MIN_SIZE: iced::Size = iced::Size::new(720.0, 480.0);
+
 /// Direktnachrichten ohne Nachricht seit so vielen Tagen ausblenden (wie Tauri).
 pub const DM_MAX_AGE_MS: i64 = 90 * 86_400_000;
 
 fn main() -> iced::Result {
     chatty_core::backend::init_tls();
-    let shot = std::env::var_os("CHATTY_SHOT").is_some();
     iced::application(boot, update, view::view)
         .title(|s: &State| match s.current_space() {
             Some(sp) => format!("{} – chatty", sp.name),
@@ -58,10 +60,12 @@ fn main() -> iced::Result {
         })
         .subscription(subscription)
         .theme(|s: &State| s.look.theme())
+        // Unsichtbar und zentriert starten; `boot` setzt 2/3 des Bildschirms und zeigt das Fenster dann.
         .window(window::Settings {
-            size: (1100.0, 700.0).into(),
-            min_size: Some((720.0, 480.0).into()),
-            visible: !shot,
+            size: INITIAL_SIZE,
+            min_size: Some(MIN_SIZE),
+            position: window::Position::Centered,
+            visible: false,
             ..window::Settings::default()
         })
         .run()
@@ -234,6 +238,8 @@ pub enum Message {
     CloseToast(u64),
     ToastAction(u64, Box<Message>),
     Focus(bool),
+    /// Startgröße: Fenster, Bildschirmgröße, Position des zentrierten Startfensters.
+    WindowSize(window::Id, Option<iced::Size>, Option<iced::Point>),
     UpdateFound(Option<updater::Release>),
     InstallUpdate,
     Updated(Result<(), String>),
@@ -308,12 +314,23 @@ fn boot() -> (State, Task<Message>) {
         },
         Message::Info,
     );
-    let check = if std::env::var_os("CHATTY_SHOT").is_some() {
+    let shot = std::env::var_os("CHATTY_SHOT").is_some();
+    let check = if shot {
         Task::none()
     } else {
         Task::perform(updater::check(), Message::UpdateFound)
     };
-    (state, Task::batch([start, check]))
+    // Prüfhilfe CHATTY_SHOT: Fenster bleibt unsichtbar.
+    let size = if shot {
+        Task::none()
+    } else {
+        window::latest().and_then(|id| {
+            window::monitor_size(id).then(move |monitor| {
+                window::position(id).map(move |pos| Message::WindowSize(id, monitor, pos))
+            })
+        })
+    };
+    (state, Task::batch([start, check, size]))
 }
 
 impl State {
@@ -1462,6 +1479,27 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
                 return s.mark_read_current();
             }
             Task::none()
+        }
+        Message::WindowSize(id, monitor, pos) => {
+            let mut tasks = Vec::new();
+            if let Some(m) = monitor {
+                let size = iced::Size::new(
+                    (m.width * 2.0 / 3.0).max(MIN_SIZE.width),
+                    (m.height * 2.0 / 3.0).max(MIN_SIZE.height),
+                );
+                tasks.push(window::resize(id, size));
+                // Mitte des zentrierten Startfensters beibehalten (bleibt auf demselben Bildschirm).
+                if let Some(p) = pos {
+                    let center_x = p.x + INITIAL_SIZE.width / 2.0;
+                    let center_y = p.y + INITIAL_SIZE.height / 2.0;
+                    tasks.push(window::move_to(
+                        id,
+                        iced::Point::new(center_x - size.width / 2.0, center_y - size.height / 2.0),
+                    ));
+                }
+            }
+            tasks.push(window::set_mode(id, window::Mode::Windowed));
+            Task::batch(tasks)
         }
         Message::UpdateFound(release) => {
             s.update_available = release;
