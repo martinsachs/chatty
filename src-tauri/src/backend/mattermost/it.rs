@@ -1,8 +1,7 @@
 //! Integrationstest gegen einen echten Server (z. B. Docker `mattermost/mattermost-preview`).
 //!
-//! Erwartet zwei Nutzer, die gemeinsam im Kanal "Dev" sind, sowie Umgebungsvariablen
-//! CHATTY_MM_URL, CHATTY_MM_USER, CHATTY_MM_PASSWORD, CHATTY_MM_USER2, CHATTY_MM_PASSWORD2.
-//! Aufruf: `cargo test mattermost::it -- --ignored --nocapture`.
+//! Testserver und Umgebungsvariablen: `scripts/mm-test-server.sh` (schreibt `src-tauri/target/mm-test.env`).
+//! Aufruf: `set -a; . target/mm-test.env; set +a; cargo test mattermost::it -- --ignored --nocapture`.
 //! Legt Keyring-Einträge `chatty-it-*` an und löscht sie am Ende wieder.
 
 use std::sync::Arc;
