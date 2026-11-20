@@ -327,7 +327,7 @@ pub async fn app_info(state: State<'_, AppState>) -> Cmd<AppInfo> {
 
 #[tauri::command]
 pub fn set_settings(state: State<'_, AppState>, theme: String, notifications: bool) -> Cmd<()> {
-    if !["mattermost", "slack", "ehex"].contains(&theme.as_str()) {
+    if !["mattermost", "slack", "ehex", "mirc", "dos"].contains(&theme.as_str()) {
         return Err(Error::other("Unbekanntes Theme"));
     }
     let mut cfg = state.config.lock().map_err(|_| Error::other("lock"))?;

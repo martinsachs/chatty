@@ -62,7 +62,7 @@ Installation). Es gibt allein keinen Zugriff auf Daten, dafür ist immer die Anm
 Alle Einträge sind optional:
 
 ```toml
-theme = "mattermost"      # oder "slack", "ehex"
+theme = "mattermost"      # oder "slack", "ehex", "mirc", "dos"
 notifications = true      # Desktop-Benachrichtigungen
 
 [google]

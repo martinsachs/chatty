@@ -161,6 +161,8 @@
             <option value="mattermost">Mattermost</option>
             <option value="slack">Slack</option>
             <option value="ehex">ehex</option>
+            <option value="mirc">mIRC</option>
+            <option value="dos">DOS (Norton Commander)</option>
           </select>
         </label>
         <label class="check">

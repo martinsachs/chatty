@@ -1,0 +1,384 @@
+/*
+ * Retro-Optiken: "mirc" (mIRC unter Windows 9x) und "dos" (Norton Commander, blaue Panels).
+ * Farben über dieselben Variablen wie app.css, dazu Strukturregeln für die Komponenten.
+ * Präfix `html:root[...]` schlägt die Svelte-Klassen (.x.svelte-hash) per Spezifität.
+ */
+
+:root[data-theme="mirc"] {
+  --font: "Fixedsys Excelsior 3.01", Fixedsys, "Lucida Console", Consolas, "DejaVu Sans Mono", monospace;
+  --rail-bg: #c0c0c0;
+  --sidebar-bg: #ffffff;
+  --sidebar-header-bg: #c0c0c0;
+  --sidebar-text: #000000;
+  --sidebar-text-strong: #000000;
+  --sidebar-hover: #e8e8e8;
+  --sidebar-active-bg: #000080;
+  --sidebar-active-bar: transparent;
+  --badge-bg: #000080;
+  --badge-text: #ffffff;
+  --mention-bg: #fc0000;
+  --center-bg: #ffffff;
+  --text: #000000;
+  --text-muted: #7f7f7f;
+  --border: #808080;
+  --hover: #f0f0f0;
+  --accent: #000080;
+  --accent-text: #ffffff;
+  --link: #0000fc;
+  --mention-text: #fc0000;
+  --mention-highlight: transparent;
+  --online: #009300;
+  --error: #fc0000;
+  --avatar-radius: 0;
+  --channel-prefix: "";
+  --radius: 0;
+  --header-height: 24px;
+}
+
+:root[data-theme="dos"] {
+  --font: "Px437 IBM VGA 8x16", "Perfect DOS VGA 437", "Lucida Console", Consolas, "DejaVu Sans Mono", monospace;
+  --rail-bg: #00aaaa;
+  --sidebar-bg: #0000aa;
+  --sidebar-header-bg: #0000aa;
+  --sidebar-text: #55ffff;
+  --sidebar-text-strong: #ffffff;
+  --sidebar-hover: #0000aa;
+  --sidebar-active-bg: #00aaaa;
+  --sidebar-active-bar: transparent;
+  --badge-bg: #ffff55;
+  --badge-text: #000000;
+  --mention-bg: #aa0000;
+  --center-bg: #0000aa;
+  --text: #55ffff;
+  --text-muted: #00aaaa;
+  --border: #55ffff;
+  --hover: #0000aa;
+  --accent: #00aaaa;
+  --accent-text: #000000;
+  --link: #ffffff;
+  --mention-text: #ffff55;
+  --mention-highlight: #000080;
+  --online: #55ff55;
+  --error: #ff5555;
+  --avatar-radius: 0;
+  --channel-prefix: "";
+  --radius: 0;
+  --header-height: 24px;
+}
+
+/* ---------- gemeinsam: eckig, Festbreitenschrift, IRC-Zeilen ---------- */
+
+html:root:is([data-theme="mirc"], [data-theme="dos"]) * {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+html:root:is([data-theme="mirc"], [data-theme="dos"]) body {
+  font-size: 13px;
+}
+
+/* [12:34] <nick> Text — eine Zeile je Nachricht, ohne Avatare. */
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .msg {
+  padding: 0 8px;
+  gap: 0;
+  contain-intrinsic-size: auto 18px;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .gutter {
+  display: none;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .msg .body {
+  display: block;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .msg .head,
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .msg.compact .head {
+  display: inline-flex;
+  gap: 1ch;
+  margin-right: 1ch;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .msg .time {
+  order: -1;
+  font-size: inherit;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .msg .time::before {
+  content: "[";
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .msg .time::after {
+  content: "]";
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .msg .sender {
+  font-weight: normal;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .msg .sender::before {
+  content: "<";
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .msg .sender::after {
+  content: ">";
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .msg .text {
+  display: inline;
+  line-height: 1.35;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .day {
+  margin: 8px 8px 2px;
+  font-weight: normal;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) code {
+  color: inherit;
+  border: none;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .composer {
+  margin: 0;
+  border-width: 1px 0 0;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .composer .hint {
+  visibility: hidden;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .center > header .name {
+  font-size: inherit;
+}
+/* Kontokopf: Name und Art in einer Zeile, passt in die niedrige Kopfhöhe. */
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .sidebar > header {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  padding: 0 8px;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .sidebar > header .title {
+  font-size: inherit;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .sidebar > header .sub {
+  font-size: inherit;
+  white-space: nowrap;
+}
+
+/* ---------- mIRC ---------- */
+
+/* Fensterrahmen in Windows-Grau, Titelzeile wie ein MDI-Kanalfenster. */
+html:root[data-theme="mirc"] .center > header,
+html:root[data-theme="mirc"] .rhs > header {
+  background: linear-gradient(90deg, #000080, #1084d0);
+  color: #ffffff;
+  border-bottom: none;
+}
+html:root[data-theme="mirc"] .center > header .icon-btn {
+  color: #ffffff;
+}
+html:root[data-theme="mirc"] .center > header .search {
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid #808080;
+  padding: 1px 4px;
+}
+html:root[data-theme="mirc"] .msg .sender {
+  color: var(--nick);
+}
+html:root[data-theme="mirc"] .msg .time {
+  color: #7f7f7f;
+}
+html:root[data-theme="mirc"] .msg.mentioned .text {
+  color: #fc0000;
+}
+html:root[data-theme="mirc"] .msg:hover {
+  background: transparent;
+}
+html:root[data-theme="mirc"] .team,
+html:root[data-theme="mirc"] .btn,
+html:root[data-theme="mirc"] .act {
+  background: #c0c0c0;
+  color: #000000;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  font-weight: normal;
+}
+html:root[data-theme="mirc"] .team.active,
+html:root[data-theme="mirc"] .btn:active {
+  border-color: #808080 #ffffff #ffffff #808080;
+  background: #e0e0e0;
+}
+html:root[data-theme="mirc"] .btn.secondary {
+  background: #c0c0c0;
+}
+html:root[data-theme="mirc"] .sidebar {
+  border-right: 2px solid #808080;
+}
+html:root[data-theme="mirc"] .sidebar .filter,
+html:root[data-theme="mirc"] .sidebar .sort {
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+}
+html:root[data-theme="mirc"] .sidebar .filter::placeholder {
+  color: #7f7f7f;
+}
+html:root[data-theme="mirc"] .sidebar .item.active {
+  color: #ffffff;
+}
+html:root[data-theme="mirc"] .sidebar .item.unread {
+  color: #fc0000;
+  font-weight: normal;
+}
+html:root[data-theme="mirc"] .composer textarea,
+html:root[data-theme="mirc"] .field input,
+html:root[data-theme="mirc"] .field select {
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+}
+html:root[data-theme="mirc"] .composer {
+  background: #c0c0c0;
+  padding: 2px;
+}
+html:root[data-theme="mirc"] .composer textarea {
+  background: #ffffff;
+}
+html:root[data-theme="mirc"] .toast {
+  background: #c0c0c0;
+  color: #000000;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+}
+html:root[data-theme="mirc"] .toast button {
+  color: #000000;
+}
+
+/* ---------- DOS / Norton Commander ---------- */
+
+/* Panels mit doppelter Rahmenlinie, Titel mittig in der oberen Linie. */
+html:root[data-theme="dos"] .sidebar,
+html:root[data-theme="dos"] .center,
+html:root[data-theme="dos"] .rhs {
+  border: 3px double #55ffff;
+}
+html:root[data-theme="dos"] .center > header,
+html:root[data-theme="dos"] .rhs > header,
+html:root[data-theme="dos"] .sidebar > header {
+  justify-content: center;
+  border-bottom: 3px double #55ffff;
+  color: #ffffff;
+}
+html:root[data-theme="dos"] .center > header .spacer {
+  display: none;
+}
+html:root[data-theme="dos"] .center > header .search,
+html:root[data-theme="dos"] .sidebar .filter,
+html:root[data-theme="dos"] .sidebar .sort,
+html:root[data-theme="dos"] .field input,
+html:root[data-theme="dos"] .field select {
+  background: #000000;
+  color: #aaaaaa;
+  border: 1px solid #00aaaa;
+  padding: 1px 4px;
+}
+html:root[data-theme="dos"] .sidebar .filter::placeholder {
+  color: #555555;
+}
+html:root[data-theme="dos"] .sidebar .item.active {
+  color: #000000;
+}
+html:root[data-theme="dos"] .sidebar .item.unread {
+  color: #ffff55;
+}
+html:root[data-theme="dos"] .sidebar .section {
+  color: #ffffff;
+}
+html:root[data-theme="dos"] .team {
+  background: #00aaaa;
+  color: #000000;
+  border: none;
+}
+html:root[data-theme="dos"] .team.active {
+  background: #000000;
+  color: #55ffff;
+}
+html:root[data-theme="dos"] .act {
+  background: #0000aa;
+  color: #ffffff;
+}
+html:root[data-theme="dos"] .msg .sender {
+  color: #ffff55;
+}
+html:root[data-theme="dos"] .msg .time {
+  color: #ffffff;
+}
+html:root[data-theme="dos"] .msg.mentioned .text {
+  color: #ffff55;
+}
+html:root[data-theme="dos"] .msg:hover {
+  background: #000080;
+}
+html:root[data-theme="dos"] .btn {
+  background: #00aaaa;
+  color: #000000;
+  font-weight: normal;
+  padding: 2px 8px;
+}
+html:root[data-theme="dos"] .btn::before {
+  content: "[ ";
+}
+html:root[data-theme="dos"] .btn::after {
+  content: " ]";
+}
+html:root[data-theme="dos"] .btn.secondary {
+  background: #aaaaaa;
+}
+html:root[data-theme="dos"] .icon-btn {
+  color: #55ffff;
+}
+html:root[data-theme="dos"] .icon-btn:hover {
+  background: #00aaaa;
+  color: #000000;
+}
+html:root[data-theme="dos"] .reaction,
+html:root[data-theme="dos"] .file {
+  background: #0000aa;
+  border-color: #00aaaa;
+  color: #55ffff;
+}
+/* Eingabe als Kommandozeile unter den Panels. */
+html:root[data-theme="dos"] .composer {
+  background: #000000;
+  border: none;
+  color: #aaaaaa;
+}
+html:root[data-theme="dos"] .composer .row {
+  display: flex;
+  align-items: baseline;
+}
+html:root[data-theme="dos"] .composer .row::before {
+  content: "C:\\CHATTY>";
+  padding-left: 8px;
+  white-space: nowrap;
+}
+html:root[data-theme="dos"] .composer textarea {
+  color: #aaaaaa;
+  caret-color: #aaaaaa;
+  padding-left: 1ch;
+}
+html:root[data-theme="dos"] .composer textarea::placeholder {
+  color: #555555;
+}
+/* Dialoge grau wie in den Norton-Menüs, Fehler rot. */
+html:root[data-theme="dos"] .dialog {
+  --center-bg: #aaaaaa;
+  --text: #000000;
+  --text-muted: #555555;
+  --border: #000000;
+  --hover: #aaaaaa;
+  border: 3px double #000000;
+}
+html:root[data-theme="dos"] .toast {
+  background: #aaaaaa;
+  color: #000000;
+  border: 3px double #000000;
+}
+html:root[data-theme="dos"] .toast.error {
+  background: #aa0000;
+  color: #ffffff;
+  border-color: #ffffff;
+}
+html:root[data-theme="dos"] .toast button {
+  color: inherit;
+}
+html:root[data-theme="dos"] {
+  scrollbar-color: #00aaaa #0000aa;
+}

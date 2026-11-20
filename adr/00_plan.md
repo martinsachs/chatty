@@ -107,7 +107,7 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
 
 ## Offene Punkte (vor/bei Umsetzung bestätigen)
 - Polling-Intervalle Google (Vorschlag: offener Space 5 s, Space-Liste 20 s; konfigurierbar) – passt bei Teamgröße zur Projektquote?
-- RAM-Zielwert (Vorschlag < 150 MB mit 2 Konten).
+- RAM-Zielwert: entschieden 2026-11-20, < 250 MB mit einem Konto (Linux, WebView-Grundlast), siehe `konzept/optimierung.md`.
 - Namensauflösung via `directory.readonly` noch unverifiziert; Fallback: Namen aus Memberships/Message-Sendern.
 - Mattermost-Testserver für E2E: lokaler Docker-Container ok oder echte Instanz?
 
@@ -170,3 +170,8 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
   jetzt alle 20 s (`{"action":"ping"}` wie die Webapp), Abrisse werden still neu verbunden, danach lädt
   der offene Space verpasste Nachrichten nach. 5 min gegen den echten Server: vorher 3 Abrisse, danach keiner.
   `tokio_tungstenite::connect_async` mit wss nicht verwenden (Panic ohne Default-Provider).
+
+- 2026-11-20 (Auftrag Martin): RAM-Ziel < 250 MB mit einem Konto; Nachrichtenfenster nach ADR 05
+  (300, Nachladen beim Hochscrollen); Optiken „mirc“ und „dos“ (`src/retro.css`, IRC-Zeilen
+  `[hh:mm] <nick> Text`); Checkliste `konzept/ui-pruefung.md`; ADR 08 (native GUI) vorgeschlagen.
+  Optiken per Screenshot des eigenen Testfensters geprüft; Kürzen nur per Logiktest, nicht per UI-Scrollen.

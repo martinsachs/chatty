@@ -65,7 +65,7 @@
   }
 </script>
 
-<div class="msg" class:compact class:mentioned={m.mentions_me && !m.mine}>
+<div class="msg" class:compact class:mentioned={m.mentions_me && !m.mine} style:--nick={colorFor(m.sender.name)}>
   <div class="gutter">
     {#if compact}
       <span class="hover-time">{time(m.created)}</span>
@@ -76,12 +76,11 @@
     {/if}
   </div>
   <div class="body">
-    {#if !compact}
-      <div class="head">
-        <span class="sender">{m.sender.name}</span>
-        <span class="time">{time(m.created)}</span>
-      </div>
-    {/if}
+    <!-- Kopf immer im DOM: IRC-/DOS-Optik zeigt Zeit und Absender in jeder Zeile. -->
+    <div class="head">
+      <span class="sender">{m.sender.name}</span>
+      <span class="time">{time(m.created)}</span>
+    </div>
     {#if editing}
       <!-- svelte-ignore a11y_autofocus -->
       <textarea class="edit" bind:value={draft} onkeydown={editKey} autofocus rows="3"></textarea>
@@ -193,6 +192,9 @@
   .body {
     flex: 1;
     min-width: 0;
+  }
+  .compact .head {
+    display: none;
   }
   .head {
     display: flex;

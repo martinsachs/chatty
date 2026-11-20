@@ -36,7 +36,7 @@ export interface PickedFile {
   name: string;
 }
 
-export type Theme = "mattermost" | "slack" | "ehex";
+export type Theme = "mattermost" | "slack" | "ehex" | "mirc" | "dos";
 
 export interface Space {
   id: string;

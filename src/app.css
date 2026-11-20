@@ -1,4 +1,4 @@
-/* Optiken über CSS-Variablen: data-theme="mattermost" | "slack" | "ehex" am <html>. */
+/* Optiken über CSS-Variablen: data-theme="mattermost" | "slack" | "ehex" am <html>; "mirc" | "dos" in retro.css. */
 
 :root,
 :root[data-theme="mattermost"] {
