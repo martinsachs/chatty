@@ -208,6 +208,7 @@ fn aggregate_reactions(list: &[ApiReaction], me: &str) -> Vec<Reaction> {
 pub fn map_post(post: &ApiPost, me: &Me, users: &HashMap<String, ApiUser>) -> Message {
     let name = users
         .get(&post.user_id)
+        .filter(|u| !u.username.is_empty())
         .map_or_else(|| post.user_id.clone(), |u| u.username.clone());
     let root = if post.root_id.is_empty() {
         &post.id

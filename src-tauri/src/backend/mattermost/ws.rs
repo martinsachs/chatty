@@ -28,11 +28,15 @@ const MAX_BACKOFF: Duration = Duration::from_secs(60);
 const PING_INTERVAL: Duration = Duration::from_secs(20);
 /// Auf den Ping antwortet der Server; bleibt länger alles still, gilt die Verbindung als tot.
 const READ_TIMEOUT: Duration = Duration::from_secs(60);
+/// Höchstdauer für das Verarbeiten eines Ereignisses (REST-Nachladen); danach verfällt es.
+const HANDLE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Erst eine Sitzung dieser Länge gilt als stabil: Abrisse danach werden still neu verbunden.
+const STABLE_SESSION: Duration = Duration::from_secs(30);
 
 enum End {
     /// Ereigniskanal geschlossen → Task beenden.
     Closed,
-    /// Verbindung verloren; `bool` = war verbunden (Backoff zurücksetzen).
+    /// Verbindung verloren; `bool` = Sitzung lief stabil (still neu verbinden, Backoff zurücksetzen).
     Lost(String, bool),
 }
 
@@ -115,6 +119,8 @@ async fn session(backend: &MattermostBackend, tx: &EventSender) -> End {
     {
         return End::Closed;
     }
+    let started = tokio::time::Instant::now();
+    let stable = || started.elapsed() >= STABLE_SESSION;
     let mut seq = 1u64;
     let mut ping =
         tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
@@ -125,18 +131,18 @@ async fn session(backend: &MattermostBackend, tx: &EventSender) -> End {
                 seq += 1;
                 let msg = json!({ "seq": seq, "action": "ping" }).to_string();
                 if let Err(e) = ws.send(WsMessage::text(msg)).await {
-                    return End::Lost(e.to_string(), true);
+                    return End::Lost(e.to_string(), stable());
                 }
                 continue;
             }
             () = tokio::time::sleep_until(deadline) => {
-                return End::Lost("WebSocket: Zeitüberschreitung".into(), true);
+                return End::Lost("WebSocket: Zeitüberschreitung".into(), stable());
             }
             next = ws.next() => next,
         };
         let msg = match next {
-            None => return End::Lost("WebSocket geschlossen".into(), true),
-            Some(Err(e)) => return End::Lost(e.to_string(), true),
+            None => return End::Lost("WebSocket geschlossen".into(), stable()),
+            Some(Err(e)) => return End::Lost(e.to_string(), stable()),
             Some(Ok(m)) => m,
         };
         deadline = tokio::time::Instant::now() + READ_TIMEOUT;
@@ -144,8 +150,13 @@ async fn session(backend: &MattermostBackend, tx: &EventSender) -> End {
         let Ok(event) = serde_json::from_str::<WsEvent>(text.as_str()) else {
             continue;
         };
-        // Fehler beim Nachladen einzelner Ereignisse ignorieren; der nächste Abruf holt sie nach.
-        let events = handle(backend, &event).await.unwrap_or_default();
+        // Fehler oder Zeitüberschreitung beim Nachladen einzelner Ereignisse ignorieren; der nächste
+        // Abruf holt sie nach. Die Frist hält Pings und Lesen nicht länger als HANDLE_TIMEOUT auf.
+        let events = tokio::time::timeout(HANDLE_TIMEOUT, handle(backend, &event))
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_default();
         for ev in events {
             if tx.send((id.clone(), ev)).is_err() {
                 return End::Closed;
@@ -192,13 +203,13 @@ async fn handle(backend: &MattermostBackend, ev: &WsEvent) -> Result<Vec<Backend
             let mut message = backend.map_one(&post).await?;
             message.mentions_me |=
                 !message.mine && (mentioned || text_mentions(&message.text, &backend.me.username));
-            let mut out = Vec::new();
-            if !message.mine
-                && let Ok(space) = backend.fetch_space(&post.channel_id).await
-            {
-                out.push(BackendEvent::SpaceUpdated { space });
-            }
-            out.insert(0, BackendEvent::MessageCreated { message });
+            // Bekannter Kanal: ohne REST fortschreiben; unbekannter (z. B. neue DM) einmal laden.
+            let space = match backend.advance_space(&message) {
+                Some(space) => Some(space),
+                None => backend.fetch_space(&post.channel_id).await.ok(),
+            };
+            let mut out = vec![BackendEvent::MessageCreated { message }];
+            out.extend(space.map(|space| BackendEvent::SpaceUpdated { space }));
             Ok(out)
         }
         "post_edited" => {

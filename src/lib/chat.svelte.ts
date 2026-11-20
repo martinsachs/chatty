@@ -325,7 +325,8 @@ class Chat {
       case "status":
         if (acc) acc.online = event.online;
         if (event.online) {
-          this.loadSpaces(account);
+          // Nach jedem (Neu-)Verbinden: offenen Space nachholen; die Space-Liste lädt nur das Hauptfenster.
+          if (!this.popout) this.loadSpaces(account);
           if (account === this.account) this.catchUp();
         }
         else if (event.detail && !this.popout) this.toast(`${acc?.label ?? "Konto"}: ${event.detail}`, "error");

@@ -9,7 +9,9 @@ mod ws;
 mod it;
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
@@ -19,13 +21,18 @@ use tokio::sync::watch;
 
 use crate::backend::{Avatar, ChatBackend, EventSender};
 use crate::error::{Error, Result};
-use crate::model::{Account, Attachment, BackendKind, Message, Page, Space, UploadFile, User};
+use crate::model::{
+    Account, Attachment, BackendKind, Message, Page, Space, SpaceKind, UploadFile, User,
+};
 use crate::secrets;
 use api::{
     ApiChannel, ApiMember, ApiPost, ApiTeam, ApiUser, Me, PostList, Preference, UploadResponse,
 };
 
 const PAGE_SIZE: usize = 50;
+/// Gesamt-Timeout für REST-Aufrufe ohne Dateien.
+const API_TIMEOUT: Duration = Duration::from_secs(30);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct MattermostBackend {
     account: Account,
@@ -42,6 +49,10 @@ pub struct MattermostBackend {
     dm_by_user: Mutex<HashMap<String, String>>,
     /// Eigene Server-Emojis: Name → ID, beim ersten Bedarf geladen.
     custom_emojis: tokio::sync::Mutex<Option<HashMap<String, String>>>,
+    /// Zuletzt bekannte Spaces; `posted` rechnet sie fort statt sie per REST neu zu laden.
+    spaces: Mutex<HashMap<String, Space>>,
+    /// REST-Aufrufe (für den Integrationstest).
+    calls: AtomicUsize,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -51,6 +62,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 fn http_client() -> Result<Client> {
     Ok(Client::builder()
         .http1_only()
+        .connect_timeout(CONNECT_TIMEOUT)
         .user_agent(concat!("chatty/", env!("CARGO_PKG_VERSION")))
         .build()?)
 }
@@ -107,6 +119,7 @@ impl MattermostBackend {
         }
         let resp = check(
             http.post(format!("{server}/api/v4/users/login"))
+                .timeout(API_TIMEOUT)
                 .json(&body)
                 .send()
                 .await?,
@@ -143,6 +156,7 @@ impl MattermostBackend {
         let http = http_client()?;
         let resp = http
             .get(format!("{server}/api/v4/users/me"))
+            .timeout(API_TIMEOUT)
             .bearer_auth(&token)
             .send()
             .await?;
@@ -166,6 +180,8 @@ impl MattermostBackend {
             teams: Mutex::new(Vec::new()),
             dm_by_user: Mutex::new(HashMap::new()),
             custom_emojis: tokio::sync::Mutex::new(None),
+            spaces: Mutex::new(HashMap::new()),
+            calls: AtomicUsize::new(0),
         }
     }
 
@@ -175,8 +191,38 @@ impl MattermostBackend {
             .bearer_auth(&self.token)
     }
 
+    /// REST-Aufruf mit Gesamt-Timeout.
     async fn send_req(&self, rb: RequestBuilder) -> Result<Response> {
+        self.send_file_req(rb.timeout(API_TIMEOUT)).await
+    }
+
+    /// Für Datei-Übertragungen (Upload, Download, Bilder): ohne Gesamt-Timeout.
+    async fn send_file_req(&self, rb: RequestBuilder) -> Result<Response> {
+        self.calls.fetch_add(1, Ordering::Relaxed);
         check(rb.send().await?).await
+    }
+
+    #[cfg(test)]
+    fn call_count(&self) -> usize {
+        self.calls.load(Ordering::Relaxed)
+    }
+
+    /// Space nach einem neuen Post fortschreiben (gleiche Regel wie Frontend und Benachrichtigung).
+    /// `None`, wenn der Kanal unbekannt ist.
+    pub(super) fn advance_space(&self, m: &Message) -> Option<Space> {
+        let mut spaces = lock(&self.spaces);
+        let s = spaces.get_mut(&m.space_id)?;
+        s.last_active = s.last_active.max(m.created);
+        s.msg_count += 1;
+        if !m.mine {
+            if !m.is_reply {
+                s.unread = true;
+            }
+            if m.mentions_me || (s.kind != SpaceKind::Channel && !s.muted && !m.is_reply) {
+                s.mention_count += 1;
+            }
+        }
+        Some(s.clone())
     }
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
@@ -217,6 +263,13 @@ impl MattermostBackend {
         for u in found {
             cache.insert(u.id.clone(), u);
         }
+        // Nicht gefundene (gelöschte Nutzer, Bots) merken, damit sie nicht bei jedem Post erneut gefragt werden.
+        for id in missing {
+            cache.entry(id.clone()).or_insert_with(|| ApiUser {
+                id,
+                ..ApiUser::default()
+            });
+        }
         Ok(())
     }
 
@@ -254,6 +307,7 @@ impl MattermostBackend {
                 let users = lock(&self.users);
                 api::dm_partner(&ch.name, &self.me.id)
                     .and_then(|id| users.get(id))
+                    .filter(|u| !u.username.is_empty())
                     .map_or_else(|| ch.display_name.clone(), |u| u.username.clone())
             }
             "G" => ch.display_name.clone(),
@@ -287,6 +341,7 @@ impl MattermostBackend {
         let favorite = self.favorites().await?.contains(channel_id);
         let mut space = api::map_channel(&ch, Some(&member), name, favorite);
         self.add_dm_status(&ch, &mut space);
+        lock(&self.spaces).insert(space.id.clone(), space.clone());
         Ok(space)
     }
 
@@ -403,7 +458,7 @@ impl ChatBackend for MattermostBackend {
         let channels: Vec<&ApiChannel> = rows.iter().map(|(c, _, _)| c).collect();
         self.ensure_dm_users(&channels).await?;
         let favorites = self.favorites().await?;
-        Ok(rows
+        let spaces: Vec<Space> = rows
             .iter()
             .map(|(ch, team, member)| {
                 let name = self.space_name(ch, Some(team), multi_team);
@@ -412,7 +467,9 @@ impl ChatBackend for MattermostBackend {
                 self.add_dm_status(ch, &mut space);
                 space
             })
-            .collect())
+            .collect();
+        *lock(&self.spaces) = spaces.iter().map(|s| (s.id.clone(), s.clone())).collect();
+        Ok(spaces)
     }
 
     async fn list_messages(&self, space_id: &str, cursor: Option<String>) -> Result<Page> {
@@ -466,7 +523,7 @@ impl ChatBackend for MattermostBackend {
                 form = form.part("files", part);
             }
             let up: UploadResponse = self
-                .send_req(self.req(Method::POST, "/files").multipart(form))
+                .send_file_req(self.req(Method::POST, "/files").multipart(form))
                 .await?
                 .json()
                 .await?;
@@ -519,7 +576,7 @@ impl ChatBackend for MattermostBackend {
 
     async fn download(&self, attachment: &Attachment) -> Result<Vec<u8>> {
         let resp = self
-            .send_req(self.req(Method::GET, &format!("/files/{}", attachment.id)))
+            .send_file_req(self.req(Method::GET, &format!("/files/{}", attachment.id)))
             .await?;
         Ok(resp.bytes().await?.to_vec())
     }
@@ -565,7 +622,7 @@ impl ChatBackend for MattermostBackend {
 
     async fn avatar(&self, user_id: &str) -> Result<Option<Avatar>> {
         let resp = self
-            .send_req(self.req(Method::GET, &format!("/users/{user_id}/image")))
+            .send_file_req(self.req(Method::GET, &format!("/users/{user_id}/image")))
             .await?;
         let mime = resp
             .headers()
@@ -588,7 +645,7 @@ impl ChatBackend for MattermostBackend {
             return Ok(None);
         };
         let resp = self
-            .send_req(self.req(Method::GET, &format!("/emoji/{id}/image")))
+            .send_file_req(self.req(Method::GET, &format!("/emoji/{id}/image")))
             .await?;
         let mime = resp
             .headers()

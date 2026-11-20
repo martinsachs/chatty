@@ -14,7 +14,7 @@ use tokio::sync::{mpsc, watch};
 use super::MattermostBackend;
 use crate::backend::ChatBackend;
 use crate::error::{Error, Result};
-use crate::model::{Account, BackendEvent, SpaceKind, UploadFile};
+use crate::model::{Account, BackendEvent, BackendKind, SpaceKind, UploadFile};
 use crate::secrets;
 
 type Rx = mpsc::UnboundedReceiver<(String, BackendEvent)>;
@@ -158,6 +158,7 @@ async fn scenario() -> Result<()> {
 
     // Fremde Nachricht mit Erwähnung → MessageCreated + SpaceUpdated(unread).
     let my_name = me.me().await?.name;
+    let calls_before = me.call_count();
     let incoming = anna
         .send(&dev, &format!("Hallo @{my_name} zebrafisch"), None, vec![])
         .await?;
@@ -177,6 +178,10 @@ async fn scenario() -> Result<()> {
         matches!(e, BackendEvent::SpaceUpdated { space } if space.id == dev && space.unread && space.mention_count > 0)
     })
     .await?;
+    check(
+        me.call_count() == calls_before,
+        "posted in bekanntem Kanal: kein REST-Aufruf",
+    )?;
 
     me.mark_read(&dev).await?;
     wait_for(
@@ -185,6 +190,54 @@ async fn scenario() -> Result<()> {
         |e| matches!(e, BackendEvent::SpaceUpdated { space } if space.id == dev && !space.unread),
     )
     .await?;
+
+    // Thread-Antwort ohne Erwähnung: Kanal bleibt gelesen.
+    let reply = anna
+        .send(
+            &dev,
+            "Antwort ohne Erwähnung",
+            incoming.thread_id.as_deref(),
+            vec![],
+        )
+        .await?;
+    wait_for(
+        &mut rx,
+        "Thread-Antwort",
+        |e| matches!(e, BackendEvent::MessageCreated { message } if message.id == reply.id),
+    )
+    .await?;
+    wait_for(&mut rx, "Space nach Thread-Antwort", |e| {
+        matches!(e, BackendEvent::SpaceUpdated { space }
+            if space.id == dev && !space.unread && space.mention_count == 0)
+    })
+    .await?;
+
+    // Neue DM von bert: unbekannter Kanal wird einmal geladen.
+    let bert = MattermostBackend::login(
+        "chatty-it-3".into(),
+        url.clone(),
+        env("CHATTY_MM_USER3")?,
+        env("CHATTY_MM_PASSWORD3")?,
+        None,
+    )
+    .await?;
+    let ids = json!([me.me.id, bert.me.id]);
+    let dm: super::api::ApiChannel = bert
+        .send_req(bert.req(Method::POST, "/channels/direct").json(&ids))
+        .await?
+        .json()
+        .await?;
+    let before = me.call_count();
+    bert.send(&dm.id, "Hallo von bert", None, vec![]).await?;
+    wait_for(
+        &mut rx,
+        "neue DM",
+        |e| matches!(e, BackendEvent::SpaceUpdated { space } if space.id == dm.id && space.unread),
+    )
+    .await?;
+    let delta = me.call_count() - before;
+    println!("REST-Aufrufe für neue DM: {delta}");
+    check(delta >= 1, "neue DM: Kanal nachgeladen")?;
 
     // Emoji-Kurzcode im Text wird Unicode, Code bleibt unverändert.
     let emo = anna
@@ -359,6 +412,51 @@ async fn scenario() -> Result<()> {
     .await?;
 
     task.abort();
+    if let Ok(proxy) = std::env::var("CHATTY_MM_PROXY_URL") {
+        reconnect_via_proxy(&proxy).await?;
+    }
+    Ok(())
+}
+
+fn docker(args: &[&str]) -> Result<()> {
+    let ok = std::process::Command::new("docker")
+        .args(args)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .map_err(|e| Error::other(e.to_string()))?
+        .success();
+    check(ok, &format!("docker {}", args.join(" ")))
+}
+
+/// Abriss über den Proxy: stabile Sitzung verbindet neu, kurze Sitzung meldet offline (N4).
+async fn reconnect_via_proxy(proxy: &str) -> Result<()> {
+    let backend = Arc::new(
+        MattermostBackend::restore(Account {
+            id: "chatty-it-1".into(),
+            kind: BackendKind::Mattermost,
+            server: Some(proxy.to_string()),
+            label: "proxy".into(),
+            login: None,
+        })
+        .await?,
+    );
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let (_active_tx, active_rx) = watch::channel(None);
+    let task = backend.start_events(tx, active_rx);
+    let online = |e: &BackendEvent| matches!(e, BackendEvent::Status { online: true, .. });
+    wait_for(&mut rx, "online über Proxy", online).await?;
+    println!("warte 35 s auf stabile Sitzung …");
+    tokio::time::sleep(Duration::from_secs(35)).await;
+    docker(&["restart", "-t", "0", "chatty-mm-proxy"])?;
+    wait_for(&mut rx, "nach Abriss wieder online", online).await?;
+    // Kurze Sitzung: sofort wieder trennen → offline wird gemeldet statt still zu schleifen.
+    docker(&["restart", "-t", "0", "chatty-mm-proxy"])?;
+    wait_for(&mut rx, "kurze Sitzung → offline", |e| {
+        matches!(e, BackendEvent::Status { online: false, .. })
+    })
+    .await?;
+    wait_for(&mut rx, "danach wieder online", online).await?;
+    task.abort();
     Ok(())
 }
 
@@ -366,7 +464,7 @@ async fn scenario() -> Result<()> {
 #[ignore = "braucht laufenden Mattermost-Server"]
 async fn mattermost_end_to_end() -> Result<()> {
     let result = scenario().await;
-    for id in ["chatty-it-1", "chatty-it-2", "chatty-it-bad"] {
+    for id in ["chatty-it-1", "chatty-it-2", "chatty-it-3", "chatty-it-bad"] {
         secrets::delete(id)?;
     }
     result
