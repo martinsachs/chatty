@@ -1,0 +1,37 @@
+name: check-signing
+
+# Von Hand starten (Actions → check-signing → Run workflow). Prüft das Updater-Secret und gibt nur
+# Kennzahlen aus, nie Inhalte.
+on: workflow_dispatch
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Secret prüfen
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PW: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import base64, binascii, os
+          k = os.environ.get("KEY", "")
+          print("Länge Zeichen:", len(k), "(erwartet: 348)")
+          print("Zeilenumbrüche:", k.count("\n"), "| CR:", k.count("\r"), "| Leerzeichen:", k.count(" "))
+          print("Passwort gesetzt:", bool(os.environ.get("PW")))
+          def dec(s):
+              try:
+                  return base64.b64decode(s.strip(), validate=False)
+              except (binascii.Error, ValueError):
+                  return None
+          d = dec(k)
+          print("Base64 dekodierbar:", d is not None)
+          if d is not None:
+              print("privater Schlüssel (rsign encrypted secret key):", d.startswith(b"untrusted comment: rsign encrypted secret key"))
+              print("öffentlicher Schlüssel (.pub) statt privatem:", d.startswith(b"untrusted comment: minisign public key"))
+              d2 = dec(d.decode("ascii", "ignore"))
+              print("doppelt Base64-kodiert:", bool(d2) and d2.startswith(b"untrusted comment:"))
+          print("Bereits dekodiert eingefügt:", k.lstrip().startswith("untrusted comment:"))
+          PY
