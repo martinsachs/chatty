@@ -8,7 +8,7 @@
 
   let list: HTMLDivElement | undefined = $state();
   let query = $state("");
-  let items: Record<string, MessageItem> = {};
+  let items: Record<string, MessageItem> = $state({});
 
   const GROUP_MS = 5 * 60_000;
 

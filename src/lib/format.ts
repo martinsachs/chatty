@@ -9,18 +9,18 @@ export function escapeHtml(s: string): string {
 /** Markdown-Teilmenge (Mattermost/Slack/Google): ```code```, `code`, **fett**, *fett*, _kursiv_, ~durch~, Links, @Erwähnungen. */
 export function formatText(text: string): string {
   const blocks: string[] = [];
-  let s = escapeHtml(text).replace(/```(?:[a-z]*\n)?([\s\S]*?)```/g, (_, code) => {
+  let s = escapeHtml(text).replace(/```(?:[a-z]*\n)?([\s\S]*?)\n?```\n?/g, (_, code) => {
     blocks.push(`<pre><code>${code}</code></pre>`);
     return `\u0000${blocks.length - 1}\u0000`;
   });
   s = s
     .replace(/`([^`\n]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s.,!?)])/g, "$1<strong>$2</strong>")
-    .replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s.,!?)])/g, "$1<em>$2</em>")
-    .replace(/(^|[\s(])~~?([^~\n]+)~~?(?=$|[\s.,!?)])/g, "$1<del>$2</del>")
+    .replace(/(^|[\s(\u0000])\*([^*\n]+)\*(?=$|[\s.,!?)])/g, "$1<strong>$2</strong>")
+    .replace(/(^|[\s(\u0000])_([^_\n]+)_(?=$|[\s.,!?)])/g, "$1<em>$2</em>")
+    .replace(/(^|[\s(\u0000])~~?([^~\n]+)~~?(?=$|[\s.,!?)])/g, "$1<del>$2</del>")
     .replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)'"])/g, '<a href="$1" target="_blank" rel="noreferrer">$1</a>')
-    .replace(/(^|\s)(@[\w.-]+)/g, '$1<span class="mention">$2</span>')
+    .replace(/(^|[\s\u0000])(@[\w.-]+)/g, '$1<span class="mention">$2</span>')
     .replace(/\n/g, "<br>");
   return s.replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[Number(i)]);
 }

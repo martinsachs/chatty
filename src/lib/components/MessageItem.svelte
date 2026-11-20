@@ -60,7 +60,7 @@
   }
 </script>
 
-<div class="msg" class:compact class:mention={m.mentions_me && !m.mine}>
+<div class="msg" class:compact class:mentioned={m.mentions_me && !m.mine}>
   <div class="gutter">
     {#if compact}
       <span class="hover-time">{time(m.created)}</span>
@@ -154,7 +154,7 @@
   .msg:hover {
     background: var(--hover);
   }
-  .msg.mention {
+  .msg.mentioned {
     background: var(--mention-highlight);
   }
   .gutter {
