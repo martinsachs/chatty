@@ -360,7 +360,7 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             if let Some(path) = std::env::var_os("CHATTY_SHOT") {
                 let mut ppm =
                     format!("P6 {} {} 255\n", shot.size.width, shot.size.height).into_bytes();
-                for px in shot.rgba.chunks_exact(4) {
+                for px in shot.rgba.as_chunks::<4>().0 {
                     ppm.extend_from_slice(&px[..3]);
                 }
                 if let Err(e) = std::fs::write(path, ppm) {
