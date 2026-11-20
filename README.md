@@ -14,6 +14,7 @@ Gebaut mit [Tauri 2](https://tauri.app) (Rust) und Svelte 5. Läuft auf Linux, W
 - Serverseitige Volltextsuche
 - Popups: Desktop-Benachrichtigungen bei DMs und Erwähnungen, Hinweise im Fenster,
   Chats in eigenem Fenster (⧉)
+- Emojis: Kurzcodes wie `:smile:` im Text, eigene Mattermost-Server-Emojis als Bild, Status-Emoji bei Direktnachrichten
 - Optik Mattermost, Slack oder ehex
 - Seitenleiste sortierbar (letzte Nachricht, Name, Anzahl), Favoriten per Drag&Drop, Kanäle stumm schalten
   (Mattermost: mit dem Server abgeglichen, Google: lokal)

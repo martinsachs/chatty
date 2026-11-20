@@ -439,6 +439,12 @@ pub async fn set_space_flag(
     Ok(())
 }
 
+/// Namen eigener Server-Emojis des Kontos (leer, wenn das Backend keine kennt).
+#[tauri::command]
+pub async fn custom_emojis(state: State<'_, AppState>, account: String) -> Cmd<Vec<String>> {
+    state.backend(&account).await?.custom_emojis().await
+}
+
 #[tauri::command]
 pub fn cached_spaces(state: State<'_, AppState>, account: String) -> Cmd<Vec<Space>> {
     state.store().spaces(&account)
@@ -676,14 +682,20 @@ pub fn avatar_protocol(
     });
 }
 
+/// Pfade: `<konto>/<nutzer>` (Profilbild) oder `<konto>/emoji/<name>` (eigenes Server-Emoji).
 async fn avatar(app: &AppHandle, path: &str) -> Option<Avatar> {
-    let (account, user) = path.split_once('/')?;
-    let valid = |s: &str| {
+    let (account, rest) = path.split_once('/')?;
+    let valid = |s: &str, extra: &[char]| {
         !s.is_empty()
             && s.chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || extra.contains(&c))
     };
-    if !valid(account) || !valid(user) {
+    let emoji = rest.strip_prefix("emoji/");
+    let ok = match emoji {
+        Some(name) => valid(name, &['+']),
+        None => valid(rest, &[]),
+    };
+    if !valid(account, &[]) || !ok {
         return None;
     }
     let state = app.state::<AppState>();
@@ -695,8 +707,14 @@ async fn avatar(app: &AppHandle, path: &str) -> Option<Avatar> {
         .or_default()
         .clone();
     // Fehler (z. B. Konto noch nicht angemeldet) werden nicht gemerkt, der nächste Abruf versucht es neu.
-    cell.get_or_try_init(|| async { state.backend(account).await?.avatar(user).await })
-        .await
-        .ok()?
-        .clone()
+    cell.get_or_try_init(|| async {
+        let backend = state.backend(account).await?;
+        match emoji {
+            Some(name) => backend.custom_emoji(name).await,
+            None => backend.avatar(rest).await,
+        }
+    })
+    .await
+    .ok()?
+    .clone()
 }

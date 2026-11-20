@@ -12,6 +12,33 @@ use crate::model::{Attachment, Message, Reaction, Space, SpaceKind, User};
 pub struct ApiUser {
     pub id: String,
     pub username: String,
+    pub props: UserProps,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct UserProps {
+    /// JSON-Text `{"emoji": "palm_tree", "text": "…", "expires_at": "…"}`.
+    #[serde(rename = "customStatus")]
+    pub custom_status: String,
+}
+
+impl ApiUser {
+    /// Status-Emoji als Unicode bzw. ":name:", sofern gesetzt und nicht abgelaufen.
+    pub fn status_emoji(&self, now_ms: i64) -> Option<String> {
+        let v: serde_json::Value = serde_json::from_str(&self.props.custom_status).ok()?;
+        let name = v.get("emoji")?.as_str().filter(|e| !e.is_empty())?;
+        let expires = v
+            .get("expires_at")
+            .and_then(|e| e.as_str())
+            .and_then(|e| chrono::DateTime::parse_from_rfc3339(e).ok())
+            .map(|t| t.timestamp_millis())
+            .filter(|t| *t > 0);
+        if expires.is_some_and(|t| t <= now_ms) {
+            return None;
+        }
+        Some(emoji::to_unicode(name))
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -197,7 +224,7 @@ pub fn map_post(post: &ApiPost, me: &Me, users: &HashMap<String, ApiUser>) -> Me
             name,
             avatar_url: None,
         },
-        text: post.message.clone(),
+        text: emoji::replace_shortcodes(&post.message),
         created: post.create_at,
         edited: (post.edit_at > 0).then_some(post.edit_at),
         reactions: aggregate_reactions(&post.metadata.reactions, &me.id),
@@ -250,6 +277,7 @@ pub fn map_channel(
         last_active: ch.last_post_at,
         msg_count: ch.total_msg_count,
         favorite,
+        status_emoji: None,
         muted: member.is_some_and(|m| m.notify_props.mark_unread == "mention"),
     }
 }
@@ -272,9 +300,36 @@ mod tests {
             ApiUser {
                 id: "u2".into(),
                 username: "anna".into(),
+                ..Default::default()
             },
         );
         m
+    }
+
+    #[test]
+    fn status_emoji_from_custom_status() {
+        let user = |status: &str| ApiUser {
+            props: UserProps {
+                custom_status: status.into(),
+            },
+            ..Default::default()
+        };
+        let now = 1_800_000_000_000;
+        assert_eq!(
+            user(r#"{"emoji":"palm_tree","text":"Urlaub"}"#).status_emoji(now),
+            Some("🌴".into())
+        );
+        assert_eq!(
+            user(r#"{"emoji":"partyparrot","expires_at":"0001-01-01T00:00:00Z"}"#)
+                .status_emoji(now),
+            Some(":partyparrot:".into())
+        );
+        assert_eq!(
+            user(r#"{"emoji":"palm_tree","expires_at":"2020-01-01T00:00:00Z"}"#).status_emoji(now),
+            None
+        );
+        assert_eq!(user("").status_emoji(now), None);
+        assert_eq!(user(r#"{"emoji":""}"#).status_emoji(now), None);
     }
 
     const POST: &str = r#"{

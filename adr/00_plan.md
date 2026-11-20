@@ -140,6 +140,12 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
   (chatty 88, WebKitWebProcess 135, WebKitNetworkProcess 17), RSS 455 MB. Ziel < 150 MB verfehlt;
   der Großteil ist die WebView-Grundlast. Windows (WebView2) und macOS (WKWebView) nicht gemessen.
 
+- Emojis (2026-11-20): volle Namensliste aus iamcal/emoji-data (`scripts/gen_emoji_table.py`,
+  `emoji_table.rs`), Kurzcodes im Text ersetzt das Backend (nicht in Code). Eigene Server-Emojis über
+  `avatar://<konto>/emoji/<name>`, Status-Emoji aus `props.customStatus` des DM-Partners, aktualisiert per
+  WebSocket `user_updated`. Integrationstest: Kurzcode und Status grün; Seitenleiste mit Status per
+  Screenshot geprüft; Server-Emoji-Bild im Text nur über `formatText` geprüft, nicht im Fenster.
+
 ### Nicht getestet / offen
 - Google Chat live: kein OAuth-Client vorhanden. Unbestätigt: `orderBy` in Kleinschreibung,
   Upload als `multipart/related`, GET-Pfad des Lesestatus, `users/all` für @all, Scope-Namen im Detail.

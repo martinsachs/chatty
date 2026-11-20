@@ -206,3 +206,10 @@ pre code {
   padding: 8px 10px;
   background: var(--center-bg);
 }
+
+/* Eigene Server-Emojis im Text, in Reaktionen und als Status. */
+img.emoji {
+  height: 1.35em;
+  width: auto;
+  vertical-align: -0.3em;
+}

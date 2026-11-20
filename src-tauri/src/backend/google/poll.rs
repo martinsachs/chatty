@@ -277,6 +277,7 @@ mod tests {
             msg_count: 0,
             favorite: false,
             muted: false,
+            status_emoji: None,
         };
         let prev: HashMap<_, _> = [s("a", 1, false), s("b", 1, false)]
             .into_iter()

@@ -331,6 +331,7 @@ pub fn map_space(g: &GSpace, name: String, unread: bool) -> Space {
         msg_count: 0,
         favorite: false,
         muted: false,
+        status_emoji: None,
     }
 }
 

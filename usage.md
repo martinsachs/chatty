@@ -93,6 +93,7 @@ macOS `~/Library/Application Support/chatty`). Er darf gelöscht werden.
 | Sortieren | Auswahl neben dem Filterfeld: Neueste (letzte Nachricht), Name, Meiste (Anzahl Nachrichten) |
 | Favorit | ☆ beim Überfahren des Eintrags, oder Eintrag in „Favoriten“ ziehen; dort per Ziehen ordnen, herausziehen entfernt |
 | Stumm schalten | 🔔 beim Überfahren; stumme Kanäle grau, Benachrichtigung nur bei Erwähnung |
+| Emojis | `:name:` im Text wird zum Emoji (volle Mattermost-Liste); eigene Server-Emojis erscheinen als Bild, auch in Reaktionen; Status-Emoji der Person steht neben der Direktnachricht |
 | Zur neuesten Nachricht | Knopf ↓ unten rechts, sobald hochgescrollt |
 | Alte Direktnachrichten | ohne Nachricht seit 90 Tagen ausgeblendet; über das Filterfeld weiter auffindbar |
 | Senden | Enter; neue Zeile mit Shift+Enter |

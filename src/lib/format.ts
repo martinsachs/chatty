@@ -6,15 +6,27 @@ export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ESC[c]);
 }
 
-/** Markdown-Teilmenge (Mattermost/Slack/Google): ```code```, `code`, **fett**, *fett*, _kursiv_, ~durch~, Links, @Erwähnungen. */
-export function formatText(text: string): string {
+/** Liefert die Bild-URL eines eigenen Server-Emojis oder `null`. */
+export type EmojiUrl = (name: string) => string | null;
+
+/** Markdown-Teilmenge (Mattermost/Slack/Google): ```code```, `code`, **fett**, *fett*, _kursiv_, ~durch~, Links, @Erwähnungen,
+ * eigene Server-Emojis `:name:` als Bild (Unicode-Kurzcodes ersetzt schon das Backend). */
+export function formatText(text: string, emojiUrl?: EmojiUrl): string {
   const blocks: string[] = [];
-  let s = escapeHtml(text).replace(/```(?:[a-z]*\n)?([\s\S]*?)\n?```\n?/g, (_, code) => {
-    blocks.push(`<pre><code>${code}</code></pre>`);
+  const keep = (html: string) => {
+    blocks.push(html);
     return `\u0000${blocks.length - 1}\u0000`;
-  });
+  };
+  let s = escapeHtml(text)
+    .replace(/```(?:[a-z]*\n)?([\s\S]*?)\n?```\n?/g, (_, code) => keep(`<pre><code>${code}</code></pre>`))
+    .replace(/`([^`\n]+)`/g, (_, code) => keep(`<code>${code}</code>`));
+  if (emojiUrl) {
+    s = s.replace(/:([a-z0-9_+-]+):/g, (all, name: string) => {
+      const url = emojiUrl(name);
+      return url ? keep(`<img class="emoji" src="${escapeHtml(url)}" alt="${all}" title="${all}">`) : all;
+    });
+  }
   s = s
-    .replace(/`([^`\n]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[\s(\u0000])\*([^*\n]+)\*(?=$|[\s.,!?)])/g, "$1<strong>$2</strong>")
     .replace(/(^|[\s(\u0000])_([^_\n]+)_(?=$|[\s.,!?)])/g, "$1<em>$2</em>")

@@ -2,6 +2,7 @@
 
 mod api;
 mod emoji;
+mod emoji_table;
 mod ws;
 
 #[cfg(test)]
@@ -37,6 +38,10 @@ pub struct MattermostBackend {
     users: Mutex<HashMap<String, ApiUser>>,
     /// Teams aus dem letzten `list_spaces` (für Präfixe bei Einzel-Aktualisierungen).
     teams: Mutex<Vec<ApiTeam>>,
+    /// DM-Partner → DM-Kanal (für Status-Änderungen per WebSocket).
+    dm_by_user: Mutex<HashMap<String, String>>,
+    /// Eigene Server-Emojis: Name → ID, beim ersten Bedarf geladen.
+    custom_emojis: tokio::sync::Mutex<Option<HashMap<String, String>>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -159,6 +164,8 @@ impl MattermostBackend {
             me,
             users: Mutex::new(users),
             teams: Mutex::new(Vec::new()),
+            dm_by_user: Mutex::new(HashMap::new()),
+            custom_emojis: tokio::sync::Mutex::new(None),
         }
     }
 
@@ -278,7 +285,61 @@ impl MattermostBackend {
         let team = teams.iter().find(|t| t.id == ch.team_id);
         let name = self.space_name(&ch, team, teams.len() > 1);
         let favorite = self.favorites().await?.contains(channel_id);
-        Ok(api::map_channel(&ch, Some(&member), name, favorite))
+        let mut space = api::map_channel(&ch, Some(&member), name, favorite);
+        self.add_dm_status(&ch, &mut space);
+        Ok(space)
+    }
+
+    /// Bei DMs das Status-Emoji des Partners setzen und den Kanal für Status-Ereignisse merken.
+    fn add_dm_status(&self, ch: &ApiChannel, space: &mut Space) {
+        if ch.kind != "D" {
+            return;
+        }
+        let Some(partner) = api::dm_partner(&ch.name, &self.me.id) else {
+            return;
+        };
+        lock(&self.dm_by_user).insert(partner.to_string(), ch.id.clone());
+        let now = chrono::Utc::now().timestamp_millis();
+        space.status_emoji = lock(&self.users)
+            .get(partner)
+            .and_then(|u| u.status_emoji(now));
+    }
+
+    /// Nutzer per WebSocket geändert (z. B. Status): Cache aktualisieren, DM-Kanal liefern.
+    pub(super) fn user_updated(&self, user: ApiUser) -> Option<String> {
+        let dm = lock(&self.dm_by_user).get(&user.id).cloned();
+        lock(&self.users).insert(user.id.clone(), user);
+        dm
+    }
+
+    /// Eigene Server-Emojis (Name → ID), seitenweise geladen; ohne Berechtigung leer.
+    async fn custom_emoji_map(&self) -> HashMap<String, String> {
+        let mut cache = self.custom_emojis.lock().await;
+        if let Some(map) = cache.as_ref() {
+            return map.clone();
+        }
+        #[derive(serde::Deserialize)]
+        struct ApiEmoji {
+            id: String,
+            name: String,
+        }
+        let mut map = HashMap::new();
+        for page in 0..50 {
+            let list: Vec<ApiEmoji> = match self
+                .get(&format!("/emoji?page={page}&per_page=200&sort=name"))
+                .await
+            {
+                Ok(l) => l,
+                Err(_) => break,
+            };
+            let full = list.len() == 200;
+            map.extend(list.into_iter().map(|e| (e.name, e.id)));
+            if !full {
+                break;
+            }
+        }
+        cache.replace(map.clone());
+        map
     }
 
     /// Kanal-IDs mit Preference `favorite_channel` = "true" (wie Webapp und Handy-App).
@@ -346,7 +407,10 @@ impl ChatBackend for MattermostBackend {
             .iter()
             .map(|(ch, team, member)| {
                 let name = self.space_name(ch, Some(team), multi_team);
-                api::map_channel(ch, Some(member), name, favorites.contains(&ch.id))
+                let mut space =
+                    api::map_channel(ch, Some(member), name, favorites.contains(&ch.id));
+                self.add_dm_status(ch, &mut space);
+                space
             })
             .collect())
     }
@@ -502,6 +566,29 @@ impl ChatBackend for MattermostBackend {
     async fn avatar(&self, user_id: &str) -> Result<Option<Avatar>> {
         let resp = self
             .send_req(self.req(Method::GET, &format!("/users/{user_id}/image")))
+            .await?;
+        let mime = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("image/png")
+            .to_string();
+        Ok(Some(Avatar {
+            data: resp.bytes().await?.to_vec(),
+            mime,
+        }))
+    }
+
+    async fn custom_emojis(&self) -> Result<Vec<String>> {
+        Ok(self.custom_emoji_map().await.into_keys().collect())
+    }
+
+    async fn custom_emoji(&self, name: &str) -> Result<Option<Avatar>> {
+        let Some(id) = self.custom_emoji_map().await.get(name).cloned() else {
+            return Ok(None);
+        };
+        let resp = self
+            .send_req(self.req(Method::GET, &format!("/emoji/{id}/image")))
             .await?;
         let mime = resp
             .headers()

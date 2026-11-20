@@ -268,6 +268,13 @@
             >
               <span class="icon">{s.kind === "channel" ? "#" : s.kind === "direct" ? "●" : "◆"}</span>
               <span class="name">{s.name}</span>
+              {#if s.status_emoji}
+                {@const custom = /^:([a-z0-9_+-]+):$/.exec(s.status_emoji)}
+                {@const url = custom ? chat.emojiUrl(chat.account, custom[1]) : null}
+                <span class="status" title="Status">
+                  {#if url}<img class="emoji" src={url} alt={s.status_emoji} />{:else if !custom}{s.status_emoji}{/if}
+                </span>
+              {/if}
               {#if s.mention_count}<span class="badge">{s.mention_count}</span>{/if}
             </button>
             <span class="actions">
@@ -472,6 +479,10 @@
   }
   .act:hover {
     background: var(--sidebar-hover);
+  }
+  .status {
+    flex-shrink: 0;
+    font-size: 13px;
   }
   .item.muted {
     opacity: 0.5;

@@ -8,6 +8,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use reqwest::Method;
+use serde_json::json;
 use tokio::sync::{mpsc, watch};
 
 use super::MattermostBackend;
@@ -184,6 +186,38 @@ async fn scenario() -> Result<()> {
         |e| matches!(e, BackendEvent::SpaceUpdated { space } if space.id == dev && !space.unread),
     )
     .await?;
+
+    // Emoji-Kurzcode im Text wird Unicode, Code bleibt unverändert.
+    let emo = anna
+        .send(&dev, "Super :tada: `:tada:`", None, vec![])
+        .await?;
+    let ev = wait_for(
+        &mut rx,
+        "posted mit Emoji",
+        |e| matches!(e, BackendEvent::MessageCreated { message } if message.id == emo.id),
+    )
+    .await?;
+    if let BackendEvent::MessageCreated { message } = ev {
+        check(
+            message.text == "Super 🎉 `:tada:`",
+            "Kurzcode → Unicode, nicht in Code",
+        )?;
+    }
+
+    // Status-Emoji des DM-Partners: per WebSocket (user_updated) in der DM sichtbar.
+    let status = json!({ "emoji": "palm_tree", "text": "Urlaub" });
+    anna.send_req(
+        anna.req(Method::PUT, "/users/me/status/custom")
+            .json(&status),
+    )
+    .await?;
+    wait_for(&mut rx, "user_updated → DM mit Status", |e| {
+        matches!(e, BackendEvent::SpaceUpdated { space }
+            if space.kind == SpaceKind::Direct && space.status_emoji.as_deref() == Some("🌴"))
+    })
+    .await?;
+    anna.send_req(anna.req(Method::DELETE, "/users/me/status/custom"))
+        .await?;
 
     // Favorit und Stumm: beim Server gespeichert, per WebSocket gemeldet, in der Liste sichtbar.
     check(

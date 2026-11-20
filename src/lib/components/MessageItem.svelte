@@ -93,7 +93,7 @@
     {:else}
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <div class="text" onclick={linkClick}>
-        {@html formatText(m.text)}{#if m.edited}<span class="edited"> (bearbeitet)</span>{/if}
+        {@html formatText(m.text, (n) => chat.emojiUrl(chat.account, n))}{#if m.edited}<span class="edited"> (bearbeitet)</span>{/if}
       </div>
     {/if}
     {#if m.attachments.length}
@@ -110,8 +110,11 @@
     {#if m.reactions.length}
       <div class="reactions">
         {#each m.reactions as r (r.emoji)}
+          {@const custom = /^:([a-z0-9_+-]+):$/.exec(r.emoji)}
+          {@const url = custom ? chat.emojiUrl(chat.account, custom[1]) : null}
           <button class="reaction" class:me={r.me} onclick={() => chat.toggleReaction(m, r.emoji)}>
-            {r.emoji} <span>{r.count}</span>
+            {#if url}<img class="emoji" src={url} alt={r.emoji} title={r.emoji} />{:else}{r.emoji}{/if}
+            <span>{r.count}</span>
           </button>
         {/each}
       </div>

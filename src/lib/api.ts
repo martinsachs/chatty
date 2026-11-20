@@ -42,6 +42,8 @@ export interface Space {
   msg_count: number;
   favorite: boolean;
   muted: boolean;
+  /** Status-Emoji des DM-Partners: Unicode oder ":name:" (eigenes Server-Emoji). */
+  status_emoji?: string | null;
 }
 
 export interface Reaction {
@@ -104,6 +106,7 @@ export const api = {
   cachedSpaces: (account: string) => invoke<Space[]>("cached_spaces", { account }),
   listSpaces: (account: string) => invoke<Space[]>("list_spaces", { account }),
   browseSpaces: (account: string, query: string) => invoke<Space[]>("browse_spaces", { account, query }),
+  customEmojis: (account: string) => invoke<string[]>("custom_emojis", { account }),
   joinSpace: (account: string, space: string) => invoke<Space>("join_space", { account, space }),
   setSpaceFlag: (account: string, space: string, flag: { favorite?: boolean; muted?: boolean }) =>
     invoke<void>("set_space_flag", { account, space, favorite: flag.favorite ?? null, muted: flag.muted ?? null }),
@@ -131,4 +134,9 @@ export const api = {
 /** URL des Profilbilds über das Backend-Schema `avatar://` (siehe app.rs `avatar_protocol`). */
 export function avatarSrc(account: string, userId: string): string {
   return `${convertFileSrc(account, "avatar")}/${encodeURIComponent(userId)}`;
+}
+
+/** URL eines eigenen Server-Emojis über dasselbe Schema. */
+export function emojiSrc(account: string, name: string): string {
+  return `${convertFileSrc(account, "avatar")}/emoji/${encodeURIComponent(name)}`;
 }

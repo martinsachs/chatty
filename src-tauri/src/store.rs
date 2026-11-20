@@ -226,6 +226,7 @@ mod tests {
             msg_count: 0,
             favorite: false,
             muted: false,
+            status_emoji: None,
         };
         st.put_spaces("a", std::slice::from_ref(&s)).unwrap();
         assert_eq!(st.spaces("a").unwrap(), vec![s.clone()]);

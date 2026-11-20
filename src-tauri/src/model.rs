@@ -51,6 +51,9 @@ pub struct Space {
     /// Stumm: keine Benachrichtigung und kein Fettdruck, außer bei Erwähnung.
     #[serde(default)]
     pub muted: bool,
+    /// Status-Emoji des DM-Partners (Unicode oder ":name:" für eigene Server-Emojis).
+    #[serde(default)]
+    pub status_emoji: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

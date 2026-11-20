@@ -31,6 +31,7 @@ pub fn run() {
             app::browse_spaces,
             app::join_space,
             app::set_space_flag,
+            app::custom_emojis,
             app::cached_messages,
             app::list_messages,
             app::list_thread,

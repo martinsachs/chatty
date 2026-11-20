@@ -1,6 +1,6 @@
 // Zentraler UI-Zustand. Ein Fenster = eine Instanz (Hauptfenster oder abgelöstes Chatfenster).
 import { listen } from "@tauri-apps/api/event";
-import { api, type AccountInfo, type ChatEvent, type Message, type Space, type Theme } from "./api";
+import { api, emojiSrc, type AccountInfo, type ChatEvent, type Message, type Space, type Theme } from "./api";
 
 export interface Toast {
   id: number;
@@ -32,11 +32,18 @@ class Chat {
   toasts = $state<Toast[]>([]);
   /** true im abgelösten Chatfenster */
   popout = $state(false);
+  /** Namen eigener Server-Emojis je Konto. */
+  customEmojis = $state.raw<Record<string, ReadonlySet<string>>>({});
   private toastSeq = 0;
   private countedReplies = new Set<string>();
 
   get currentSpace(): Space | undefined {
     return this.account ? this.spaces[this.account]?.find((s) => s.id === this.space) : undefined;
+  }
+
+  /** Bild-URL für ":name:", wenn es ein eigenes Server-Emoji des Kontos ist. */
+  emojiUrl(account: string | null, name: string): string | null {
+    return account && this.customEmojis[account]?.has(name) ? emojiSrc(account, name) : null;
   }
 
   get currentAccount(): AccountInfo | undefined {
@@ -71,6 +78,12 @@ class Chat {
     if (cached.length && !this.spaces[account]) this.spaces[account] = sortSpaces(cached);
     const online = this.accounts.find((a) => a.id === account)?.online;
     if (!online) return;
+    if (!this.customEmojis[account]) {
+      api
+        .customEmojis(account)
+        .then((names) => (this.customEmojis = { ...this.customEmojis, [account]: new Set(names) }))
+        .catch(() => {});
+    }
     try {
       this.spaces[account] = sortSpaces(await api.listSpaces(account));
     } catch (e) {

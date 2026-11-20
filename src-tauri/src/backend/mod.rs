@@ -60,6 +60,16 @@ pub trait ChatBackend: Send + Sync {
         Ok(None)
     }
 
+    /// Namen eigener Server-Emojis (ohne Doppelpunkte).
+    async fn custom_emojis(&self) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+
+    /// Bild eines eigenen Server-Emojis.
+    async fn custom_emoji(&self, _name: &str) -> Result<Option<Avatar>> {
+        Ok(None)
+    }
+
     /// Serverseitige Volltextsuche über alle Spaces des Kontos.
     async fn search(&self, query: &str) -> Result<Vec<Message>>;
 
