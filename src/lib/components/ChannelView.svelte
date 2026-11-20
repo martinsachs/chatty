@@ -7,6 +7,7 @@
   import MessageItem from "./MessageItem.svelte";
 
   let list: HTMLDivElement | undefined = $state();
+  let inner: HTMLDivElement | undefined = $state();
   let query = $state("");
   let items: Record<string, MessageItem> = $state({});
 
@@ -27,7 +28,18 @@
     const grew = count > lastCount;
     lastCount = count;
     lastSpace = space;
+    if (changed) atBottom = true;
     if (changed || (grew && atBottom)) tick().then(() => list && (list.scrollTop = list.scrollHeight));
+  });
+
+  // Höhen ändern sich nach dem Rendern (geschätzte Höhen, Bilder): unten bleiben, solange man unten war.
+  $effect(() => {
+    if (!inner) return;
+    const ro = new ResizeObserver(() => {
+      if (atBottom && list) list.scrollTop = list.scrollHeight;
+    });
+    ro.observe(inner);
+    return () => ro.disconnect();
   });
 
   // Knopf „nach unten“, sobald man ein Stück hochgescrollt hat.
@@ -42,7 +54,7 @@
     const fromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
     atBottom = fromBottom < 40;
     showDown = fromBottom > 300;
-    if (list.scrollTop < 80 && chat.cursor && !chat.loading) {
+    if (list.scrollTop < 80 && chat.cursor && !chat.loadingOlder && !chat.loadingInitial) {
       const before = list.scrollHeight;
       await chat.loadOlder();
       await tick();
@@ -78,18 +90,20 @@
   </header>
   <div class="scroller">
     <div class="messages" bind:this={list} onscroll={onScroll}>
-      {#if chat.loading && !chat.messages.length}
-        <p class="info">Lade …</p>
-      {:else if !chat.cursor && chat.messages.length}
-        <p class="info">Anfang von {chat.currentSpace?.name}</p>
-      {/if}
-      {#each chat.messages as m, i (m.id)}
-        {@const prev = chat.messages[i - 1]}
-        {#if !prev || day(prev.created) !== day(m.created)}
-          <div class="day"><span>{day(m.created)}</span></div>
+      <div bind:this={inner}>
+        {#if chat.loadingInitial && !chat.messages.length}
+          <p class="info">Lade …</p>
+        {:else if !chat.loadingInitial && !chat.cursor && chat.messages.length}
+          <p class="info">Anfang von {chat.currentSpace?.name}</p>
         {/if}
-        <MessageItem bind:this={items[m.id]} message={m} compact={compact(prev, m)} />
-      {/each}
+        {#each chat.messages as m, i (m.id)}
+          {@const prev = chat.messages[i - 1]}
+          {#if !prev || day(prev.created) !== day(m.created)}
+            <div class="day"><span>{day(m.created)}</span></div>
+          {/if}
+          <MessageItem bind:this={items[m.id]} message={m} compact={compact(prev, m)} />
+        {/each}
+      </div>
     </div>
     {#if showDown}
       <button class="down" title="Zur neuesten Nachricht" onclick={toBottom}>↓</button>

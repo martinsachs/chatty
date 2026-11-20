@@ -31,6 +31,8 @@ jobs:
 
       - run: npm ci
       - run: npm run check
+      - name: Logiktest UI-Zustand
+        run: node scripts/test-chat-store.mjs
       - run: npm run build
 
       - name: clippy

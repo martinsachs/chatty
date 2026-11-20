@@ -27,7 +27,10 @@ class Chat {
   space = $state<string | null>(null);
   messages = $state<Message[]>([]);
   cursor = $state<string | null>(null);
-  loading = $state(false);
+  /** Erste Seite eines Space lädt. */
+  loadingInitial = $state(false);
+  /** Ältere Nachrichten laden. */
+  loadingOlder = $state(false);
   rhs = $state<Rhs>(null);
   toasts = $state<Toast[]>([]);
   /** true im abgelösten Chatfenster */
@@ -36,6 +39,8 @@ class Chat {
   customEmojis = $state.raw<Record<string, ReadonlySet<string>>>({});
   private toastSeq = 0;
   private countedReplies = new Set<string>();
+  /** Zählt Ladevorgänge, die den Verlauf ersetzen; ältere Antworten werden verworfen. */
+  private loadSeq = 0;
 
   get currentSpace(): Space | undefined {
     return this.account ? this.spaces[this.account]?.find((s) => s.id === this.space) : undefined;
@@ -114,6 +119,10 @@ class Chat {
   }
 
   async selectAccount(account: string) {
+    if (this.account && this.account !== account) api.setActive(this.account, null).catch(() => {});
+    this.loadSeq++;
+    this.loadingInitial = false;
+    this.loadingOlder = false;
     this.account = account;
     this.space = null;
     this.messages = [];
@@ -123,33 +132,49 @@ class Chat {
 
   async openSpace(account: string, space: string) {
     if (this.account && this.account !== account) await api.setActive(this.account, null).catch(() => {});
+    const seq = ++this.loadSeq;
     this.account = account;
     this.space = space;
     this.rhs = this.rhs?.kind === "search" ? this.rhs : null;
     this.cursor = null;
-    this.messages = await api.cachedMessages(account, space).catch(() => []);
-    api.setActive(account, space).catch(() => {});
-    this.loading = true;
+    this.messages = [];
+    this.loadingOlder = false;
+    this.loadingInitial = true;
     try {
+      const cached = await api.cachedMessages(account, space).catch(() => []);
+      if (seq !== this.loadSeq) return;
+      this.messages = cached;
+      api.setActive(account, space).catch(() => {});
       const page = await api.listMessages(account, space);
-      if (this.space !== space) return;
+      if (seq !== this.loadSeq) return;
       this.messages = page.messages;
       this.cursor = page.next_cursor;
       this.markRead();
     } catch (e) {
-      this.toast(`Verlauf laden: ${e}`, "error");
+      if (seq === this.loadSeq) this.toast(`Verlauf laden: ${e}`, "error");
     } finally {
-      this.loading = false;
+      if (seq === this.loadSeq) this.loadingInitial = false;
     }
   }
 
   /** Nach (Neu-)Verbindung: im Abriss verpasste Nachrichten des offenen Space holen. */
   private async catchUp() {
     const { account, space } = this;
-    if (!account || !space || this.loading) return;
+    // Während des Erstladens unnötig: die Seite ist ohnehin frisch.
+    if (!account || !space || this.loadingInitial) return;
+    const seq = this.loadSeq;
     try {
       const page = await api.listMessages(account, space);
-      if (this.account !== account || this.space !== space) return;
+      if (seq !== this.loadSeq) return;
+      const known = new Set(this.messages.map((m) => m.id));
+      if (this.messages.length && !page.messages.some((m) => known.has(m.id))) {
+        // Lücke zum Bestand: Verlauf ersetzen statt mischen, laufendes „ältere laden“ verwerfen.
+        this.loadSeq++;
+        this.loadingOlder = false;
+        this.messages = page.messages;
+        this.cursor = page.next_cursor;
+        return;
+      }
       for (const m of page.messages) this.upsert(m);
       this.messages.sort((a, b) => a.created - b.created);
     } catch {
@@ -158,17 +183,20 @@ class Chat {
   }
 
   async loadOlder() {
-    if (!this.account || !this.space || !this.cursor || this.loading) return;
-    this.loading = true;
+    const { account, space, cursor } = this;
+    if (!account || !space || !cursor || this.loadingOlder || this.loadingInitial) return;
+    const seq = this.loadSeq;
+    this.loadingOlder = true;
     try {
-      const page = await api.listMessages(this.account, this.space, this.cursor);
+      const page = await api.listMessages(account, space, cursor);
+      if (seq !== this.loadSeq) return;
       const known = new Set(this.messages.map((m) => m.id));
       this.messages = [...page.messages.filter((m) => !known.has(m.id)), ...this.messages];
       this.cursor = page.next_cursor;
     } catch (e) {
-      this.toast(`Ältere Nachrichten: ${e}`, "error");
+      if (seq === this.loadSeq) this.toast(`Ältere Nachrichten: ${e}`, "error");
     } finally {
-      this.loading = false;
+      if (seq === this.loadSeq) this.loadingOlder = false;
     }
   }
 

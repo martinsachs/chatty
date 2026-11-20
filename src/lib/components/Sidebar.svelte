@@ -92,10 +92,12 @@
     const up = () => {
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
       saveWidth();
     };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
   }
 
   async function join(s: Space) {
@@ -166,6 +168,7 @@
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       if (active && drag) {
         suppressClick = true;
         setTimeout(() => (suppressClick = false), 0);
@@ -175,6 +178,7 @@
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }
 
   function drop(d: { id: string; section: Section | null; target: string | null }) {

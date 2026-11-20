@@ -178,10 +178,14 @@ impl Store {
     }
 
     pub fn delete_account(&self, account: &str) -> Result<()> {
-        self.conn
-            .execute("DELETE FROM messages WHERE account = ?1", params![account])?;
-        self.conn
-            .execute("DELETE FROM spaces WHERE account = ?1", params![account])?;
+        let tx = self.conn.unchecked_transaction()?;
+        for table in ["messages", "spaces", "flags"] {
+            tx.execute(
+                &format!("DELETE FROM {table} WHERE account = ?1"),
+                params![account],
+            )?;
+        }
+        tx.commit()?;
         Ok(())
     }
 }
@@ -247,6 +251,11 @@ mod tests {
         st.set_flag("a", "s1", Some(false), None).unwrap();
         st.apply_flags("a", &mut list).unwrap();
         assert!(!list[0].favorite && list[0].muted);
+        st.delete_account("a").unwrap();
+        assert!(st.spaces("a").unwrap().is_empty());
+        list[0].muted = false;
+        st.apply_flags("a", &mut list).unwrap();
+        assert!(!list[0].muted, "Flags mit dem Konto gelöscht");
     }
 
     #[test]
