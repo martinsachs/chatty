@@ -26,16 +26,62 @@
     return () => clearTimeout(t);
   });
 
+  // Breite per Ziehen am rechten Rand, gemerkt im Browser-Speicher der WebView.
+  const MIN_W = 160;
+  const MAX_W = 520;
+  let width = $state(loadWidth());
+
+  function loadWidth(): number {
+    try {
+      const w = Number(localStorage.getItem("sidebarWidth"));
+      if (w >= MIN_W && w <= MAX_W) return w;
+    } catch {}
+    return 240;
+  }
+
+  function saveWidth() {
+    try {
+      localStorage.setItem("sidebarWidth", String(width));
+    } catch {}
+  }
+
+  function startResize(e: PointerEvent) {
+    e.preventDefault();
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startW = width;
+    const move = (ev: PointerEvent) => {
+      width = Math.min(MAX_W, Math.max(MIN_W, startW + ev.clientX - startX));
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      saveWidth();
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+  }
+
   async function join(s: Space) {
     if (!chat.account) return;
     filter = "";
     await chat.joinSpace(chat.account, s.id);
   }
 
+  // Direktnachrichten ohne Nachricht seit 90 Tagen ausblenden (außer ungelesen, offen oder gesucht).
+  const DM_MAX_AGE_MS = 90 * 86_400_000;
+
+  function visible(s: Space, f: string): boolean {
+    if (f) return s.name.toLowerCase().includes(f);
+    if (s.kind === "channel" || s.unread || s.id === chat.space) return true;
+    return s.last_active >= Date.now() - DM_MAX_AGE_MS;
+  }
+
   function spacesOf(kinds: SpaceKind[]): Space[] {
     const all = (chat.account && chat.spaces[chat.account]) || [];
     const f = filter.trim().toLowerCase();
-    return all.filter((s) => kinds.includes(s.kind) && (!f || s.name.toLowerCase().includes(f)));
+    return all.filter((s) => kinds.includes(s.kind) && visible(s, f));
   }
 
   function unreadTotal(account: string): number {
@@ -59,7 +105,7 @@
   <button class="team add" title="Konto hinzufügen / Einstellungen" onclick={onSettings}>+</button>
 </nav>
 
-<aside class="sidebar">
+<aside class="sidebar" style:width="{width}px">
   <header>
     <div class="title">{chat.currentAccount?.label ?? "chatty"}</div>
     <div class="sub">
@@ -105,6 +151,11 @@
       <p class="empty">Noch kein Konto. Mit <b>+</b> links ein Konto hinzufügen.</p>
     {/if}
   </div>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="resize" title="Breite ändern (Doppelklick: Standard)" onpointerdown={startResize} ondblclick={() => {
+      width = 240;
+      saveWidth();
+    }}></div>
 </aside>
 
 <style>
@@ -147,7 +198,7 @@
     border: 2px solid var(--rail-bg);
   }
   .sidebar {
-    width: 240px;
+    position: relative;
     background: var(--sidebar-bg);
     color: var(--sidebar-text);
     display: flex;
@@ -229,6 +280,19 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .resize {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 2;
+  }
+  .resize:hover {
+    background: var(--sidebar-active-bar);
+    opacity: 0.5;
   }
   .join {
     font-size: 11px;

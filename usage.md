@@ -88,6 +88,9 @@ macOS `~/Library/Application Support/chatty`). Er darf gelöscht werden.
 |---|---|
 | Konto wechseln | Kürzel in der linken Leiste |
 | Kanal öffnen | Eintrag in der Seitenleiste, oben filtern |
+| Kanal beitreten (Mattermost) | Namen ins Filterfeld tippen → „Weitere Kanäle“ → anklicken |
+| Seitenleiste breiter/schmaler | rechten Rand ziehen, Doppelklick = Standardbreite |
+| Alte Direktnachrichten | ohne Nachricht seit 90 Tagen ausgeblendet; über das Filterfeld weiter auffindbar |
 | Senden | Enter; neue Zeile mit Shift+Enter |
 | Letzte eigene Nachricht bearbeiten | ↑ im leeren Eingabefeld |
 | Nachricht bearbeiten/löschen | Maus über die Nachricht → ✎ / 🗑 |
