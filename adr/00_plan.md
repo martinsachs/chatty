@@ -133,6 +133,9 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
 - UI (Mattermost-Container): Verlauf, Formatierung, Thread-Zähler, Reaktionen, Live-Nachricht,
   Erwähnung, Ungelesen-Badge, In-App-Hinweis, beide Optiken.
 - Mattermost-Profilbilder über das Schema `avatar://` (Backend lädt mit Token), Linux.
+- Mattermost: Seitenleiste nur mit Mitgliedschaften; Kanalsuche im Filterfeld mit Beitreten
+  (Integrationstest; UI-Eingabe nicht automatisiert geprüft). Google: Beitreten nicht unterstützt
+  (die Chat API bietet Nutzern keine Suche nach fremden Spaces).
 - RAM (Linux, Release-Build, WebKitGTK, 1 Mattermost-Konto, nach 60 s): Summe PSS 241 MB
   (chatty 88, WebKitWebProcess 135, WebKitNetworkProcess 17), RSS 455 MB. Ziel < 150 MB verfehlt;
   der Großteil ist die WebView-Grundlast. Windows (WebView2) und macOS (WKWebView) nicht gemessen.

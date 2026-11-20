@@ -1,6 +1,6 @@
 <script lang="ts">
   import { chat } from "$lib/chat.svelte";
-  import type { Space, SpaceKind } from "$lib/api";
+  import { api, type Space, type SpaceKind } from "$lib/api";
   import { initials } from "$lib/format";
 
   let { onSettings }: { onSettings: () => void } = $props();
@@ -11,6 +11,26 @@
   ];
 
   let filter = $state("");
+
+  // Beitretbare Kanäle vom Server (nur Mattermost), passend zum Filter, leicht verzögert.
+  let joinable = $state<Space[]>([]);
+  $effect(() => {
+    const q = filter.trim();
+    const acc = chat.currentAccount;
+    joinable = [];
+    if (!q || acc?.kind !== "mattermost" || !acc.online) return;
+    const t = setTimeout(async () => {
+      const found = await api.browseSpaces(acc.id, q).catch(() => []);
+      if (filter.trim() === q && chat.account === acc.id) joinable = found;
+    }, 300);
+    return () => clearTimeout(t);
+  });
+
+  async function join(s: Space) {
+    if (!chat.account) return;
+    filter = "";
+    await chat.joinSpace(chat.account, s.id);
+  }
 
   function spacesOf(kinds: SpaceKind[]): Space[] {
     const all = (chat.account && chat.spaces[chat.account]) || [];
@@ -47,7 +67,11 @@
       {#if chat.currentAccount && !chat.currentAccount.online}· getrennt{/if}
     </div>
   </header>
-  <input class="filter" placeholder="Kanäle filtern" bind:value={filter} />
+  <input
+    class="filter"
+    placeholder={chat.currentAccount?.kind === "mattermost" ? "Kanäle filtern / suchen" : "Kanäle filtern"}
+    bind:value={filter}
+  />
   <div class="list">
     {#each sections as sec (sec.title)}
       {@const items = spacesOf(sec.kinds)}
@@ -67,6 +91,16 @@
         {/each}
       {/if}
     {/each}
+    {#if joinable.length}
+      <div class="section">Weitere Kanäle</div>
+      {#each joinable as s (s.id)}
+        <button class="item" title="Beitreten" onclick={() => join(s)}>
+          <span class="icon">#</span>
+          <span class="name">{s.name}</span>
+          <span class="join">Beitreten</span>
+        </button>
+      {/each}
+    {/if}
     {#if !chat.accounts.length}
       <p class="empty">Noch kein Konto. Mit <b>+</b> links ein Konto hinzufügen.</p>
     {/if}
@@ -195,6 +229,10 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .join {
+    font-size: 11px;
+    opacity: 0.7;
   }
   .badge {
     background: var(--mention-bg);

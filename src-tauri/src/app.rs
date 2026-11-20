@@ -378,6 +378,22 @@ pub async fn remove_account(state: State<'_, AppState>, account: String) -> Cmd<
 }
 
 #[tauri::command]
+pub async fn browse_spaces(
+    state: State<'_, AppState>,
+    account: String,
+    query: String,
+) -> Cmd<Vec<Space>> {
+    state.backend(&account).await?.browse_spaces(&query).await
+}
+
+#[tauri::command]
+pub async fn join_space(state: State<'_, AppState>, account: String, space: String) -> Cmd<Space> {
+    let space = state.backend(&account).await?.join_space(&space).await?;
+    state.store().put_space(&account, &space)?;
+    Ok(space)
+}
+
+#[tauri::command]
 pub fn cached_spaces(state: State<'_, AppState>, account: String) -> Cmd<Vec<Space>> {
     state.store().spaces(&account)
 }

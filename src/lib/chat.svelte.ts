@@ -78,6 +78,14 @@ class Chat {
     }
   }
 
+  /** Kanal beitreten, in die Seitenleiste aufnehmen und öffnen. */
+  async joinSpace(account: string, id: string) {
+    const space = await this.guard(api.joinSpace(account, id));
+    if (!space) return;
+    this.spaces[account] = sortSpaces([...(this.spaces[account] ?? []).filter((s) => s.id !== id), space]);
+    await this.openSpace(account, id);
+  }
+
   async selectAccount(account: string) {
     this.account = account;
     this.space = null;

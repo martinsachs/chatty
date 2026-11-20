@@ -70,6 +70,45 @@ async fn scenario() -> Result<()> {
     .await?;
     println!("login ok: {}", me.account().label);
 
+    // Kanal nur mit anna: fehlt in der Liste, ist per Suche findbar und beitretbar.
+    let team = anna
+        .my_teams()
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(Error::other("kein Team"))?;
+    let name = format!("it-{:08x}", rand::random::<u32>());
+    let created: serde_json::Value = anna
+        .post_json(
+            "/channels",
+            &serde_json::json!({ "team_id": team.id, "name": name, "display_name": name, "type": "O" }),
+        )
+        .await?;
+    let foreign = created["id"].as_str().unwrap_or_default().to_string();
+    check(
+        !me.list_spaces().await?.iter().any(|s| s.id == foreign),
+        "fremder Kanal nicht in der Liste",
+    )?;
+    check(
+        me.browse_spaces(&name)
+            .await?
+            .iter()
+            .any(|s| s.id == foreign),
+        "Suche findet fremden Kanal",
+    )?;
+    check(me.join_space(&foreign).await?.id == foreign, "beigetreten")?;
+    check(
+        me.list_spaces().await?.iter().any(|s| s.id == foreign),
+        "Kanal nach Beitritt in der Liste",
+    )?;
+    check(
+        !me.browse_spaces(&name)
+            .await?
+            .iter()
+            .any(|s| s.id == foreign),
+        "Suche zeigt beigetretenen Kanal nicht mehr",
+    )?;
+
     // Wiederherstellen mit gespeichertem Token, falsches Token → Auth.
     let me = Arc::new(MattermostBackend::restore(me.account().clone()).await?);
     let mut bad: Account = me.account().clone();

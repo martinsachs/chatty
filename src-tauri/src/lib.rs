@@ -28,6 +28,8 @@ pub fn run() {
             app::remove_account,
             app::cached_spaces,
             app::list_spaces,
+            app::browse_spaces,
+            app::join_space,
             app::cached_messages,
             app::list_messages,
             app::list_thread,

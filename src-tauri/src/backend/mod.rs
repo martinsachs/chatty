@@ -65,6 +65,16 @@ pub trait ChatBackend: Send + Sync {
 
     async fn mark_read(&self, space_id: &str) -> Result<()>;
 
+    /// Beitretbare Spaces (noch nicht Mitglied), passend zu `query`.
+    async fn browse_spaces(&self, _query: &str) -> Result<Vec<Space>> {
+        Err(crate::error::Error::other("Vom Backend nicht unterstützt"))
+    }
+
+    /// Space beitreten; liefert ihn für die Seitenleiste.
+    async fn join_space(&self, _space_id: &str) -> Result<Space> {
+        Err(crate::error::Error::other("Vom Backend nicht unterstützt"))
+    }
+
     /// Startet Polling bzw. WebSocket. `active_space` ist der gerade offene Space
     /// (Google pollt ihn häufiger). Der Task endet, wenn `tx` geschlossen wird
     /// oder der Handle abgebrochen wird.

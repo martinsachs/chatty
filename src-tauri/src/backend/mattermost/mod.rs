@@ -298,7 +298,7 @@ impl ChatBackend for MattermostBackend {
         let multi_team = teams.len() > 1;
         let mut seen = HashSet::new();
         // (Kanal, Team, Mitgliedschaft)
-        let mut rows: Vec<(ApiChannel, &ApiTeam, Option<ApiMember>)> = Vec::new();
+        let mut rows: Vec<(ApiChannel, &ApiTeam, ApiMember)> = Vec::new();
         for team in &teams {
             let channels: Vec<ApiChannel> = self
                 .get(&format!("/users/me/teams/{}/channels", team.id))
@@ -314,7 +314,10 @@ impl ChatBackend for MattermostBackend {
                 if ch.delete_at > 0 || !seen.insert(ch.id.clone()) {
                     continue;
                 }
-                let member = members.remove(&ch.id);
+                // Manche Server liefern auch öffentliche Kanäle ohne Mitgliedschaft: weglassen.
+                let Some(member) = members.remove(&ch.id) else {
+                    continue;
+                };
                 rows.push((ch, team, member));
             }
         }
@@ -324,7 +327,7 @@ impl ChatBackend for MattermostBackend {
             .iter()
             .map(|(ch, team, member)| {
                 let name = self.space_name(ch, Some(team), multi_team);
-                api::map_channel(ch, member.as_ref(), name)
+                api::map_channel(ch, Some(member), name)
             })
             .collect())
     }
@@ -436,6 +439,42 @@ impl ChatBackend for MattermostBackend {
             .send_req(self.req(Method::GET, &format!("/files/{}", attachment.id)))
             .await?;
         Ok(resp.bytes().await?.to_vec())
+    }
+
+    async fn browse_spaces(&self, query: &str) -> Result<Vec<Space>> {
+        let teams = self.my_teams().await?;
+        let multi_team = teams.len() > 1;
+        let mut out = Vec::new();
+        for team in &teams {
+            let members: Vec<ApiMember> = self
+                .get(&format!("/users/me/teams/{}/channels/members", team.id))
+                .await?;
+            let joined: HashSet<String> = members.into_iter().map(|m| m.channel_id).collect();
+            // Öffentliche Kanäle des Teams, nach Name gesucht.
+            let channels: Vec<ApiChannel> = self
+                .post_json(
+                    &format!("/teams/{}/channels/search", team.id),
+                    &json!({ "term": query }),
+                )
+                .await?;
+            out.extend(
+                channels
+                    .iter()
+                    .filter(|c| c.delete_at == 0 && !joined.contains(&c.id))
+                    .map(|c| api::map_channel(c, None, self.space_name(c, Some(team), multi_team))),
+            );
+        }
+        Ok(out)
+    }
+
+    async fn join_space(&self, space_id: &str) -> Result<Space> {
+        let _: serde_json::Value = self
+            .post_json(
+                &format!("/channels/{space_id}/members"),
+                &json!({ "user_id": self.me.id }),
+            )
+            .await?;
+        self.fetch_space(space_id).await
     }
 
     async fn avatar(&self, user_id: &str) -> Result<Option<Avatar>> {

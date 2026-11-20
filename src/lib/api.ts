@@ -98,6 +98,8 @@ export const api = {
   removeAccount: (account: string) => invoke<void>("remove_account", { account }),
   cachedSpaces: (account: string) => invoke<Space[]>("cached_spaces", { account }),
   listSpaces: (account: string) => invoke<Space[]>("list_spaces", { account }),
+  browseSpaces: (account: string, query: string) => invoke<Space[]>("browse_spaces", { account, query }),
+  joinSpace: (account: string, space: string) => invoke<Space>("join_space", { account, space }),
   cachedMessages: (account: string, space: string) => invoke<Message[]>("cached_messages", { account, space }),
   listMessages: (account: string, space: string, cursor?: string | null) =>
     invoke<Page>("list_messages", { account, space, cursor }),
