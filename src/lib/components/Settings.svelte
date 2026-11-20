@@ -160,6 +160,7 @@
           <select bind:value={theme} onchange={saveSettings}>
             <option value="mattermost">Mattermost</option>
             <option value="slack">Slack</option>
+            <option value="ehex">ehex</option>
           </select>
         </label>
         <label class="check">

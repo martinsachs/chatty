@@ -34,7 +34,11 @@ impl Store {
                  account TEXT NOT NULL, space TEXT NOT NULL, id TEXT NOT NULL,
                  created INTEGER NOT NULL, is_reply INTEGER NOT NULL, json TEXT NOT NULL,
                  PRIMARY KEY (account, id));
-             CREATE INDEX IF NOT EXISTS messages_space ON messages (account, space, created);",
+             CREATE INDEX IF NOT EXISTS messages_space ON messages (account, space, created);
+             CREATE TABLE IF NOT EXISTS flags (
+                 account TEXT NOT NULL, id TEXT NOT NULL,
+                 favorite INTEGER NOT NULL DEFAULT 0, muted INTEGER NOT NULL DEFAULT 0,
+                 PRIMARY KEY (account, id));",
         )?;
         Ok(Self { conn })
     }
@@ -57,6 +61,52 @@ impl Store {
             "INSERT OR REPLACE INTO spaces (account, id, json) VALUES (?1, ?2, ?3)",
             params![account, space.id, serde_json::to_string(space)?],
         )?;
+        Ok(())
+    }
+
+    /// Lokaler Favorit/Stumm für Backends ohne eigene Unterstützung (Google).
+    pub fn set_flag(
+        &self,
+        account: &str,
+        id: &str,
+        favorite: Option<bool>,
+        muted: Option<bool>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO flags (account, id) VALUES (?1, ?2)",
+            params![account, id],
+        )?;
+        self.conn.execute(
+            "UPDATE flags SET favorite = COALESCE(?3, favorite), muted = COALESCE(?4, muted)
+             WHERE account = ?1 AND id = ?2",
+            params![account, id, favorite, muted],
+        )?;
+        Ok(())
+    }
+
+    /// Lokale Flags über die Backend-Werte legen.
+    pub fn apply_flags(&self, account: &str, spaces: &mut [Space]) -> Result<()> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT id, favorite, muted FROM flags WHERE account = ?1")?;
+        let rows = stmt.query_map(params![account], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, bool>(1)?,
+                r.get::<_, bool>(2)?,
+            ))
+        })?;
+        let mut flags = std::collections::HashMap::new();
+        for row in rows {
+            let (id, fav, muted) = row?;
+            flags.insert(id, (fav, muted));
+        }
+        for s in spaces {
+            if let Some(&(fav, muted)) = flags.get(&s.id) {
+                s.favorite = fav;
+                s.muted = muted;
+            }
+        }
         Ok(())
     }
 
@@ -173,6 +223,9 @@ mod tests {
             unread: true,
             mention_count: 2,
             last_active: 10,
+            msg_count: 0,
+            favorite: false,
+            muted: false,
         };
         st.put_spaces("a", std::slice::from_ref(&s)).unwrap();
         assert_eq!(st.spaces("a").unwrap(), vec![s.clone()]);
@@ -181,7 +234,18 @@ mod tests {
         let mut s2 = s.clone();
         s2.unread = false;
         st.put_space("a", &s2).unwrap();
-        assert_eq!(st.spaces("a").unwrap(), vec![s2]);
+        assert_eq!(st.spaces("a").unwrap(), vec![s2.clone()]);
+
+        let mut list = vec![s2];
+        st.set_flag("a", "s1", Some(true), None).unwrap();
+        st.set_flag("a", "s1", None, Some(true)).unwrap();
+        st.apply_flags("b", &mut list).unwrap();
+        assert!(!list[0].favorite && !list[0].muted);
+        st.apply_flags("a", &mut list).unwrap();
+        assert!(list[0].favorite && list[0].muted);
+        st.set_flag("a", "s1", Some(false), None).unwrap();
+        st.apply_flags("a", &mut list).unwrap();
+        assert!(!list[0].favorite && list[0].muted);
     }
 
     #[test]

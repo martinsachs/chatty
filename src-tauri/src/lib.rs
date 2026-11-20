@@ -30,6 +30,7 @@ pub fn run() {
             app::list_spaces,
             app::browse_spaces,
             app::join_space,
+            app::set_space_flag,
             app::cached_messages,
             app::list_messages,
             app::list_thread,

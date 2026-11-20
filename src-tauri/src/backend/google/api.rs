@@ -328,6 +328,9 @@ pub fn map_space(g: &GSpace, name: String, unread: bool) -> Space {
         unread,
         mention_count: 0,
         last_active: g.last_active_time.as_deref().map(parse_time).unwrap_or(0),
+        msg_count: 0,
+        favorite: false,
+        muted: false,
     }
 }
 

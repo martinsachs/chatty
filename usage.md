@@ -62,7 +62,7 @@ Installation). Es gibt allein keinen Zugriff auf Daten, dafür ist immer die Anm
 Alle Einträge sind optional:
 
 ```toml
-theme = "mattermost"      # oder "slack"
+theme = "mattermost"      # oder "slack", "ehex"
 notifications = true      # Desktop-Benachrichtigungen
 
 [google]
@@ -90,6 +90,10 @@ macOS `~/Library/Application Support/chatty`). Er darf gelöscht werden.
 | Kanal öffnen | Eintrag in der Seitenleiste, oben filtern |
 | Kanal beitreten (Mattermost) | Namen ins Filterfeld tippen → „Weitere Kanäle“ → anklicken |
 | Seitenleiste breiter/schmaler | rechten Rand ziehen, Doppelklick = Standardbreite |
+| Sortieren | Auswahl neben dem Filterfeld: Neueste (letzte Nachricht), Name, Meiste (Anzahl Nachrichten) |
+| Favorit | ☆ beim Überfahren des Eintrags, oder Eintrag in „Favoriten“ ziehen; dort per Ziehen ordnen, herausziehen entfernt |
+| Stumm schalten | 🔔 beim Überfahren; stumme Kanäle grau, Benachrichtigung nur bei Erwähnung |
+| Zur neuesten Nachricht | Knopf ↓ unten rechts, sobald hochgescrollt |
 | Alte Direktnachrichten | ohne Nachricht seit 90 Tagen ausgeblendet; über das Filterfeld weiter auffindbar |
 | Senden | Enter; neue Zeile mit Shift+Enter |
 | Letzte eigene Nachricht bearbeiten | ↑ im leeren Eingabefeld |

@@ -1,7 +1,7 @@
 # chatty
 
-Schlanker Desktop-Chatclient für **Google Chat** und **Mattermost**, in der Optik von Mattermost
-oder Slack (umschaltbar). Ein Fenster, mehrere Konten, wenig Speicher.
+Schlanker Desktop-Chatclient für **Google Chat** und **Mattermost**, in der Optik von Mattermost,
+Slack oder in ehex-Farben (umschaltbar). Ein Fenster, mehrere Konten, wenig Speicher.
 
 Gebaut mit [Tauri 2](https://tauri.app) (Rust) und Svelte 5. Läuft auf Linux, Windows und macOS.
 
@@ -14,7 +14,9 @@ Gebaut mit [Tauri 2](https://tauri.app) (Rust) und Svelte 5. Läuft auf Linux, W
 - Serverseitige Volltextsuche
 - Popups: Desktop-Benachrichtigungen bei DMs und Erwähnungen, Hinweise im Fenster,
   Chats in eigenem Fenster (⧉)
-- Optik Mattermost oder Slack
+- Optik Mattermost, Slack oder ehex
+- Seitenleiste sortierbar (letzte Nachricht, Name, Anzahl), Favoriten per Drag&Drop, Kanäle stumm schalten
+  (Mattermost: mit dem Server abgeglichen, Google: lokal)
 - Signierte automatische Updates über GitHub Releases
 
 Bedienung und Einrichtung: [usage.md](usage.md). Architektur und Entscheidungen:

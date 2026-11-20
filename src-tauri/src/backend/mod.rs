@@ -75,6 +75,16 @@ pub trait ChatBackend: Send + Sync {
         Err(crate::error::Error::other("Vom Backend nicht unterstützt"))
     }
 
+    /// Favorit setzen. `Ok(false)` = Backend kann es nicht, chatty merkt es sich lokal.
+    async fn set_favorite(&self, _space_id: &str, _on: bool) -> Result<bool> {
+        Ok(false)
+    }
+
+    /// Stumm schalten. `Ok(false)` = Backend kann es nicht, chatty merkt es sich lokal.
+    async fn set_muted(&self, _space_id: &str, _on: bool) -> Result<bool> {
+        Ok(false)
+    }
+
     /// Startet Polling bzw. WebSocket. `active_space` ist der gerade offene Space
     /// (Google pollt ihn häufiger). Der Task endet, wenn `tx` geschlossen wird
     /// oder der Handle abgebrochen wird.

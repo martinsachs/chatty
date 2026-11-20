@@ -185,6 +185,38 @@ async fn scenario() -> Result<()> {
     )
     .await?;
 
+    // Favorit und Stumm: beim Server gespeichert, per WebSocket gemeldet, in der Liste sichtbar.
+    check(
+        me.set_favorite(&dev, true).await?,
+        "set_favorite beim Server",
+    )?;
+    wait_for(
+        &mut rx,
+        "preferences_changed",
+        |e| matches!(e, BackendEvent::SpaceUpdated { space } if space.id == dev && space.favorite),
+    )
+    .await?;
+    check(me.set_muted(&dev, true).await?, "set_muted beim Server")?;
+    wait_for(
+        &mut rx,
+        "channel_member_updated",
+        |e| matches!(e, BackendEvent::SpaceUpdated { space } if space.id == dev && space.muted),
+    )
+    .await?;
+    let listed = me.list_spaces().await?;
+    let d = listed.iter().find(|s| s.id == dev);
+    check(
+        d.is_some_and(|s| s.favorite && s.muted && s.msg_count > 0),
+        "Liste: Favorit, stumm, msg_count",
+    )?;
+    me.set_favorite(&dev, false).await?;
+    me.set_muted(&dev, false).await?;
+    let d = me.list_spaces().await?.into_iter().find(|s| s.id == dev);
+    check(
+        d.is_some_and(|s| !s.favorite && !s.muted),
+        "Favorit und Stumm zurückgesetzt",
+    )?;
+
     // Eigene Nachricht mit Anhang, Antwort im Thread.
     let file = UploadFile {
         name: "hallo.txt".into(),

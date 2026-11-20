@@ -1,4 +1,4 @@
-/* Zwei Optiken über CSS-Variablen: data-theme="mattermost" | "slack" am <html>. */
+/* Optiken über CSS-Variablen: data-theme="mattermost" | "slack" | "ehex" am <html>. */
 
 :root,
 :root[data-theme="mattermost"] {
@@ -61,6 +61,40 @@
   --channel-prefix: "# ";
   --radius: 8px;
   --header-height: 49px;
+}
+
+/* Farben von ehex.de: Navy #100b28, Violett #5a40dd, Pink #f726a0, Grautöne Tailwind. */
+:root[data-theme="ehex"] {
+  --font: Roboto, "Segoe UI", system-ui, sans-serif;
+  --rail-bg: #100b28;
+  --sidebar-bg: #1b1442;
+  --sidebar-header-bg: #160f37;
+  --sidebar-text: rgba(255, 255, 255, 0.66);
+  --sidebar-text-strong: #fff;
+  --sidebar-hover: rgba(255, 255, 255, 0.08);
+  --sidebar-active-bg: rgba(117, 96, 226, 0.35);
+  --sidebar-active-bar: #f726a0;
+  --brand-line-width: 3px;
+  --brand-line: linear-gradient(90deg, #5a40dd, #5a40dd 30%, #f726a0 70%, #7560e2);
+  --badge-bg: #f726a0;
+  --badge-text: #fff;
+  --mention-bg: #f726a0;
+  --center-bg: #ffffff;
+  --text: #111827;
+  --text-muted: #6b7280;
+  --border: #e5e7eb;
+  --hover: #f9fafb;
+  --accent: #5a40dd;
+  --accent-text: #ffffff;
+  --link: #5a40dd;
+  --mention-text: #5a40dd;
+  --mention-highlight: rgba(247, 38, 160, 0.08);
+  --online: #06d6a0;
+  --error: #dc2626;
+  --avatar-radius: 50%;
+  --channel-prefix: "";
+  --radius: 6px;
+  --header-height: 56px;
 }
 
 * {

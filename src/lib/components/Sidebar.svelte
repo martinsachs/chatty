@@ -1,16 +1,51 @@
 <script lang="ts">
   import { chat } from "$lib/chat.svelte";
-  import { api, type Space, type SpaceKind } from "$lib/api";
+  import { api, type Space } from "$lib/api";
   import { initials } from "$lib/format";
 
   let { onSettings }: { onSettings: () => void } = $props();
 
-  const sections: { title: string; kinds: SpaceKind[] }[] = [
-    { title: "Kanäle", kinds: ["channel"] },
-    { title: "Direktnachrichten", kinds: ["direct", "group"] },
+  type Section = "fav" | "channel" | "dm";
+  const sections: { id: Section; title: string }[] = [
+    { id: "fav", title: "Favoriten" },
+    { id: "channel", title: "Kanäle" },
+    { id: "dm", title: "Direktnachrichten" },
   ];
 
+  type Sort = "recent" | "name" | "count";
+  const sorts: { id: Sort; label: string }[] = [
+    { id: "recent", label: "Neueste" },
+    { id: "name", label: "Name" },
+    { id: "count", label: "Meiste" },
+  ];
+
+  function load(key: string, fallback: string): string {
+    try {
+      return localStorage.getItem(key) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function save(key: string, value: string) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {}
+  }
+
   let filter = $state("");
+  let sort = $state<Sort>(load("sidebarSort", "recent") as Sort);
+
+  // Reihenfolge der Favoriten je Konto (per Ziehen), nur lokal.
+  let favOrder = $state<string[]>([]);
+  $effect(() => {
+    const acc = chat.account;
+    try {
+      favOrder = acc ? JSON.parse(load(`favOrder:${acc}`, "[]")) : [];
+    } catch {
+      favOrder = [];
+    }
+  });
 
   // Beitretbare Kanäle vom Server (nur Mattermost), passend zum Filter, leicht verzögert.
   let joinable = $state<Space[]>([]);
@@ -74,14 +109,94 @@
 
   function visible(s: Space, f: string): boolean {
     if (f) return s.name.toLowerCase().includes(f);
-    if (s.kind === "channel" || s.unread || s.id === chat.space) return true;
+    if (s.kind === "channel" || s.favorite || s.unread || s.id === chat.space) return true;
     return s.last_active >= Date.now() - DM_MAX_AGE_MS;
   }
 
-  function spacesOf(kinds: SpaceKind[]): Space[] {
+  function inSection(s: Space, sec: Section): boolean {
+    if (sec === "fav") return s.favorite;
+    if (s.favorite) return false;
+    return sec === "channel" ? s.kind === "channel" : s.kind !== "channel";
+  }
+
+  function byName(a: Space, b: Space): number {
+    return a.name.localeCompare(b.name, "de");
+  }
+
+  function compare(a: Space, b: Space): number {
+    if (sort === "recent") return b.last_active - a.last_active || byName(a, b);
+    if (sort === "count") return b.msg_count - a.msg_count || byName(a, b);
+    return byName(a, b);
+  }
+
+  function spacesOf(sec: Section): Space[] {
     const all = (chat.account && chat.spaces[chat.account]) || [];
     const f = filter.trim().toLowerCase();
-    return all.filter((s) => kinds.includes(s.kind) && visible(s, f));
+    const list = all.filter((s) => inSection(s, sec) && visible(s, f));
+    if (sec !== "fav") return list.sort(compare);
+    // Gezogene Reihenfolge zuerst, neue Favoriten danach nach gewählter Sortierung.
+    const pos = (s: Space) => {
+      const i = favOrder.indexOf(s.id);
+      return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    return list.sort((a, b) => pos(a) - pos(b) || compare(a, b));
+  }
+
+  // Ziehen per Pointer-Events (HTML5-Drag&Drop kollidiert mit Tauris Datei-Drop).
+  let drag = $state<{ id: string; section: Section | null; target: string | null } | null>(null);
+  let suppressClick = false;
+
+  function startDrag(e: PointerEvent, s: Space) {
+    if (e.button !== 0) return;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    let active = false;
+    const move = (ev: PointerEvent) => {
+      if (!active && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 6) return;
+      active = true;
+      const hit = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>(
+        "[data-section]",
+      );
+      drag = {
+        id: s.id,
+        section: (hit?.dataset.section as Section | undefined) ?? null,
+        target: hit?.dataset.space ?? null,
+      };
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (active && drag) {
+        suppressClick = true;
+        setTimeout(() => (suppressClick = false), 0);
+        drop(drag);
+      }
+      drag = null;
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  function drop(d: { id: string; section: Section | null; target: string | null }) {
+    const acc = chat.account;
+    const s = acc ? chat.spaces[acc]?.find((x) => x.id === d.id) : undefined;
+    if (!acc || !s || !d.section) return;
+    if (d.section === "fav") {
+      const order = spacesOf("fav")
+        .map((x) => x.id)
+        .filter((id) => id !== d.id);
+      const at = d.target ? order.indexOf(d.target) : -1;
+      order.splice(at < 0 ? order.length : at, 0, d.id);
+      favOrder = order;
+      save(`favOrder:${acc}`, JSON.stringify(order));
+      if (!s.favorite) chat.setFlag(acc, s.id, { favorite: true });
+    } else if (s.favorite) {
+      chat.setFlag(acc, s.id, { favorite: false });
+    }
+  }
+
+  function open(s: Space) {
+    if (!suppressClick && chat.account) chat.openSpace(chat.account, s.id);
   }
 
   function unreadTotal(account: string): number {
@@ -113,27 +228,63 @@
       {#if chat.currentAccount && !chat.currentAccount.online}· getrennt{/if}
     </div>
   </header>
-  <input
-    class="filter"
-    placeholder={chat.currentAccount?.kind === "mattermost" ? "Kanäle filtern / suchen" : "Kanäle filtern"}
-    bind:value={filter}
-  />
+  <div class="tools">
+    <input
+      class="filter"
+      placeholder={chat.currentAccount?.kind === "mattermost" ? "Kanäle filtern / suchen" : "Kanäle filtern"}
+      bind:value={filter}
+    />
+    <select class="sort" title="Sortierung: Neueste = letzte Nachricht, Meiste = Anzahl Nachrichten" bind:value={sort} onchange={() => save("sidebarSort", sort)}>
+      {#each sorts as o (o.id)}
+        <option value={o.id}>{o.label}</option>
+      {/each}
+    </select>
+  </div>
   <div class="list">
-    {#each sections as sec (sec.title)}
-      {@const items = spacesOf(sec.kinds)}
-      {#if items.length}
-        <div class="section">{sec.title}</div>
+    {#each sections as sec (sec.id)}
+      {@const items = spacesOf(sec.id)}
+      {#if items.length || (drag && sec.id === "fav")}
+        <div class="section" data-section={sec.id} class:drop={drag?.section === sec.id && !drag.target}>
+          {sec.title}
+        </div>
+        {#if !items.length}
+          <div class="hint" data-section={sec.id}>Hierher ziehen</div>
+        {/if}
         {#each items as s (s.id)}
-          <button
-            class="item"
-            class:active={s.id === chat.space}
-            class:unread={s.unread}
-            onclick={() => chat.account && chat.openSpace(chat.account, s.id)}
+          <div
+            class="row"
+            data-section={sec.id}
+            data-space={s.id}
+            class:drop={drag && drag.target === s.id && drag.id !== s.id}
+            class:dragging={drag?.id === s.id}
           >
-            <span class="icon">{s.kind === "channel" ? "#" : s.kind === "direct" ? "●" : "◆"}</span>
-            <span class="name">{s.name}</span>
-            {#if s.mention_count}<span class="badge">{s.mention_count}</span>{/if}
-          </button>
+            <button
+              class="item"
+              class:active={s.id === chat.space}
+              class:unread={s.unread && !s.muted}
+              class:muted={s.muted}
+              onpointerdown={(e) => startDrag(e, s)}
+              onclick={() => open(s)}
+            >
+              <span class="icon">{s.kind === "channel" ? "#" : s.kind === "direct" ? "●" : "◆"}</span>
+              <span class="name">{s.name}</span>
+              {#if s.mention_count}<span class="badge">{s.mention_count}</span>{/if}
+            </button>
+            <span class="actions">
+              <button
+                class="act"
+                title={s.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten"}
+                onclick={() => chat.account && chat.setFlag(chat.account, s.id, { favorite: !s.favorite })}
+                >{s.favorite ? "★" : "☆"}</button
+              >
+              <button
+                class="act"
+                title={s.muted ? "Stummschaltung aufheben" : "Stumm schalten"}
+                onclick={() => chat.account && chat.setFlag(chat.account, s.id, { muted: !s.muted })}
+                >{s.muted ? "🔕" : "🔔"}</button
+              >
+            </span>
+          </div>
         {/each}
       {/if}
     {/each}
@@ -209,7 +360,8 @@
     height: var(--header-height);
     background: var(--sidebar-header-bg);
     padding: 8px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: var(--brand-line-width, 1px) solid rgba(255, 255, 255, 0.1);
+    border-image: var(--brand-line) 1;
   }
   .title {
     color: var(--sidebar-text-strong);
@@ -222,8 +374,28 @@
   .sub {
     font-size: 12px;
   }
-  .filter {
+  .tools {
+    display: flex;
+    gap: 6px;
     margin: 10px 12px;
+  }
+  .sort {
+    flex-shrink: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0 8px;
+    border: none;
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--sidebar-text-strong);
+    font-size: 12px;
+  }
+  .sort option {
+    color: #000;
+  }
+  .filter {
+    flex: 1;
+    min-width: 0;
     padding: 6px 10px;
     border-radius: var(--radius);
     border: none;
@@ -256,6 +428,53 @@
     text-align: left;
     padding: 6px 16px;
     border-left: 4px solid transparent;
+  }
+  .row {
+    position: relative;
+    user-select: none;
+  }
+  .row.drop {
+    box-shadow: inset 0 2px 0 var(--sidebar-active-bar);
+  }
+  .row.dragging {
+    opacity: 0.4;
+  }
+  .section.drop,
+  .hint {
+    color: var(--sidebar-text-strong);
+  }
+  .hint {
+    padding: 6px 16px;
+    margin: 0 12px;
+    border: 1px dashed var(--sidebar-text);
+    border-radius: var(--radius);
+    font-size: 12px;
+  }
+  .actions {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: none;
+    gap: 2px;
+  }
+  .row:hover .actions {
+    display: flex;
+  }
+  .act {
+    border: none;
+    background: var(--sidebar-bg);
+    color: var(--sidebar-text-strong);
+    border-radius: 4px;
+    padding: 0 4px;
+    font-size: 12px;
+    line-height: 20px;
+  }
+  .act:hover {
+    background: var(--sidebar-hover);
+  }
+  .item.muted {
+    opacity: 0.5;
   }
   .item:hover {
     background: var(--sidebar-hover);

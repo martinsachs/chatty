@@ -30,9 +30,18 @@
     if (changed || (grew && atBottom)) tick().then(() => list && (list.scrollTop = list.scrollHeight));
   });
 
+  // Knopf „nach unten“, sobald man ein Stück hochgescrollt hat.
+  let showDown = $state(false);
+
+  function toBottom() {
+    list?.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+  }
+
   async function onScroll() {
     if (!list) return;
-    atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+    const fromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+    atBottom = fromBottom < 40;
+    showDown = fromBottom > 300;
     if (list.scrollTop < 80 && chat.cursor && !chat.loading) {
       const before = list.scrollHeight;
       await chat.loadOlder();
@@ -67,19 +76,24 @@
       <button class="icon-btn" title="In eigenem Fenster öffnen" onclick={popout}>⧉</button>
     {/if}
   </header>
-  <div class="messages" bind:this={list} onscroll={onScroll}>
-    {#if chat.loading && !chat.messages.length}
-      <p class="info">Lade …</p>
-    {:else if !chat.cursor && chat.messages.length}
-      <p class="info">Anfang von {chat.currentSpace?.name}</p>
-    {/if}
-    {#each chat.messages as m, i (m.id)}
-      {@const prev = chat.messages[i - 1]}
-      {#if !prev || day(prev.created) !== day(m.created)}
-        <div class="day"><span>{day(m.created)}</span></div>
+  <div class="scroller">
+    <div class="messages" bind:this={list} onscroll={onScroll}>
+      {#if chat.loading && !chat.messages.length}
+        <p class="info">Lade …</p>
+      {:else if !chat.cursor && chat.messages.length}
+        <p class="info">Anfang von {chat.currentSpace?.name}</p>
       {/if}
-      <MessageItem bind:this={items[m.id]} message={m} compact={compact(prev, m)} />
-    {/each}
+      {#each chat.messages as m, i (m.id)}
+        {@const prev = chat.messages[i - 1]}
+        {#if !prev || day(prev.created) !== day(m.created)}
+          <div class="day"><span>{day(m.created)}</span></div>
+        {/if}
+        <MessageItem bind:this={items[m.id]} message={m} compact={compact(prev, m)} />
+      {/each}
+    </div>
+    {#if showDown}
+      <button class="down" title="Zur neuesten Nachricht" onclick={toBottom}>↓</button>
+    {/if}
   </div>
   <Composer placeholder={`Nachricht an ${chat.currentSpace?.name ?? ""}`} onEditLast={editLast} />
 </section>
@@ -120,6 +134,25 @@
     border-radius: var(--radius);
     padding: 5px 10px;
     background: var(--hover);
+  }
+  .scroller {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    display: flex;
+  }
+  .down {
+    position: absolute;
+    right: 24px;
+    bottom: 16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--accent);
+    color: var(--accent-text);
+    font-size: 18px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
   }
   .messages {
     flex: 1;

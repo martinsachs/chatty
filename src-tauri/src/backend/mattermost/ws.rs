@@ -244,6 +244,33 @@ async fn handle(backend: &MattermostBackend, ev: &WsEvent) -> Result<Vec<Backend
             }
             Ok(out)
         }
+        // Favorit in anderem Client geändert
+        "preferences_changed" | "preferences_deleted" => {
+            let prefs: Vec<Value> = nested(data, "preferences")?;
+            let mut out = Vec::new();
+            for p in prefs {
+                if p.get("category").and_then(Value::as_str) != Some("favorite_channel") {
+                    continue;
+                }
+                if let Some(id) = p.get("name").and_then(Value::as_str) {
+                    out.push(BackendEvent::SpaceUpdated {
+                        space: backend.fetch_space(id).await?,
+                    });
+                }
+            }
+            Ok(out)
+        }
+        // Stummschaltung in anderem Client geändert
+        "channel_member_updated" => {
+            let member: Value = nested(data, "channelMember")?;
+            let id = member
+                .get("channel_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            Ok(vec![BackendEvent::SpaceUpdated {
+                space: backend.fetch_space(id).await?,
+            }])
+        }
         _ => Ok(Vec::new()),
     }
 }

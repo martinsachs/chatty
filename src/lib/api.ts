@@ -17,7 +17,7 @@ export interface AccountInfo extends Account {
 }
 
 export interface AppInfo {
-  theme: "mattermost" | "slack";
+  theme: Theme;
   notifications: boolean;
   google_configured: boolean;
   google_client_id: string;
@@ -30,6 +30,8 @@ export interface User {
   avatar_url?: string | null;
 }
 
+export type Theme = "mattermost" | "slack" | "ehex";
+
 export interface Space {
   id: string;
   name: string;
@@ -37,6 +39,9 @@ export interface Space {
   unread: boolean;
   mention_count: number;
   last_active: number;
+  msg_count: number;
+  favorite: boolean;
+  muted: boolean;
 }
 
 export interface Reaction {
@@ -100,6 +105,8 @@ export const api = {
   listSpaces: (account: string) => invoke<Space[]>("list_spaces", { account }),
   browseSpaces: (account: string, query: string) => invoke<Space[]>("browse_spaces", { account, query }),
   joinSpace: (account: string, space: string) => invoke<Space>("join_space", { account, space }),
+  setSpaceFlag: (account: string, space: string, flag: { favorite?: boolean; muted?: boolean }) =>
+    invoke<void>("set_space_flag", { account, space, favorite: flag.favorite ?? null, muted: flag.muted ?? null }),
   cachedMessages: (account: string, space: string) => invoke<Message[]>("cached_messages", { account, space }),
   listMessages: (account: string, space: string, cursor?: string | null) =>
     invoke<Page>("list_messages", { account, space, cursor }),

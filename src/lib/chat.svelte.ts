@@ -1,6 +1,6 @@
 // Zentraler UI-Zustand. Ein Fenster = eine Instanz (Hauptfenster oder abgelöstes Chatfenster).
 import { listen } from "@tauri-apps/api/event";
-import { api, type AccountInfo, type ChatEvent, type Message, type Space } from "./api";
+import { api, type AccountInfo, type ChatEvent, type Message, type Space, type Theme } from "./api";
 
 export interface Toast {
   id: number;
@@ -16,7 +16,7 @@ export type Rhs =
   | null;
 
 class Chat {
-  theme = $state<"mattermost" | "slack">("mattermost");
+  theme = $state<Theme>("mattermost");
   notifications = $state(true);
   googleConfigured = $state(false);
   googleClientId = $state("");
@@ -59,7 +59,7 @@ class Chat {
     if (!this.account && this.accounts.length) this.account = this.accounts[0].id;
   }
 
-  async saveSettings(theme: "mattermost" | "slack", notifications: boolean) {
+  async saveSettings(theme: Theme, notifications: boolean) {
     this.theme = theme;
     this.notifications = notifications;
     await this.guard(api.setSettings(theme, notifications));
@@ -75,6 +75,20 @@ class Chat {
       this.spaces[account] = sortSpaces(await api.listSpaces(account));
     } catch (e) {
       this.toast(`Spaces laden: ${e}`, "error");
+    }
+  }
+
+  /** Favorit / Stumm umschalten (sofort in der Liste, Server bzw. lokal im Hintergrund). */
+  async setFlag(account: string, id: string, flag: { favorite?: boolean; muted?: boolean }) {
+    const s = this.spaces[account]?.find((s) => s.id === id);
+    if (!s) return;
+    const before = { favorite: s.favorite, muted: s.muted };
+    Object.assign(s, flag);
+    try {
+      await api.setSpaceFlag(account, id, flag);
+    } catch (e) {
+      Object.assign(s, before);
+      this.toast(String(e), "error");
     }
   }
 
@@ -310,7 +324,7 @@ class Chat {
     if (!s) return;
     s.unread = true;
     s.last_active = Math.max(s.last_active, m.created);
-    if (m.mentions_me || s.kind !== "channel") {
+    if (m.mentions_me || (s.kind !== "channel" && !s.muted)) {
       s.mention_count++;
       if (!this.popout) {
         this.toast(`${m.sender.name}${s.kind === "channel" ? ` in ${s.name}` : ""}: ${m.text.slice(0, 120)}`, "message", {

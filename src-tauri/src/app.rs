@@ -144,10 +144,13 @@ struct ChatEvent<'a> {
 }
 
 async fn event_loop(app: AppHandle, mut rx: mpsc::UnboundedReceiver<(String, BackendEvent)>) {
-    while let Some((account, event)) = rx.recv().await {
+    while let Some((account, mut event)) = rx.recv().await {
         let state = app.state::<AppState>();
         let cached = {
             let mut store = state.store();
+            if let BackendEvent::SpaceUpdated { space } = &mut event {
+                let _ = store.apply_flags(&account, std::slice::from_mut(space));
+            }
             match &event {
                 BackendEvent::MessageCreated { message }
                 | BackendEvent::MessageUpdated { message } => {
@@ -202,7 +205,8 @@ fn notify(app: &AppHandle, state: &AppState, account: &str, m: &Message) {
         .ok()
         .and_then(|s| s.into_iter().find(|s| s.id == m.space_id));
     let is_dm = space.as_ref().is_some_and(|s| s.kind != SpaceKind::Channel);
-    if !(is_dm || m.mentions_me) {
+    let muted = space.as_ref().is_some_and(|s| s.muted);
+    if !(is_dm && !muted || m.mentions_me) {
         return;
     }
     let title = match &space {
@@ -264,7 +268,7 @@ pub async fn app_info(state: State<'_, AppState>) -> Cmd<AppInfo> {
 
 #[tauri::command]
 pub fn set_settings(state: State<'_, AppState>, theme: String, notifications: bool) -> Cmd<()> {
-    if theme != "mattermost" && theme != "slack" {
+    if !["mattermost", "slack", "ehex"].contains(&theme.as_str()) {
         return Err(Error::other("Unbekanntes Theme"));
     }
     let mut cfg = state.config.lock().map_err(|_| Error::other("lock"))?;
@@ -388,9 +392,51 @@ pub async fn browse_spaces(
 
 #[tauri::command]
 pub async fn join_space(state: State<'_, AppState>, account: String, space: String) -> Cmd<Space> {
-    let space = state.backend(&account).await?.join_space(&space).await?;
-    state.store().put_space(&account, &space)?;
+    let mut space = state.backend(&account).await?.join_space(&space).await?;
+    let store = state.store();
+    store.apply_flags(&account, std::slice::from_mut(&mut space))?;
+    store.put_space(&account, &space)?;
     Ok(space)
+}
+
+/// Favorit bzw. Stumm setzen: beim Server, sonst lokal.
+#[tauri::command]
+pub async fn set_space_flag(
+    state: State<'_, AppState>,
+    account: String,
+    space: String,
+    favorite: Option<bool>,
+    muted: Option<bool>,
+) -> Cmd<()> {
+    let backend = state.backend(&account).await?;
+    let fav_local = match favorite {
+        Some(on) => !backend.set_favorite(&space, on).await?,
+        None => false,
+    };
+    let mute_local = match muted {
+        Some(on) => !backend.set_muted(&space, on).await?,
+        None => false,
+    };
+    let store = state.store();
+    if fav_local || mute_local {
+        store.set_flag(
+            &account,
+            &space,
+            favorite.filter(|_| fav_local),
+            muted.filter(|_| mute_local),
+        )?;
+    }
+    // Cache sofort angleichen (Benachrichtigungen lesen ihn).
+    if let Some(mut s) = store.spaces(&account)?.into_iter().find(|s| s.id == space) {
+        if let Some(f) = favorite {
+            s.favorite = f;
+        }
+        if let Some(m) = muted {
+            s.muted = m;
+        }
+        store.put_space(&account, &s)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -400,8 +446,10 @@ pub fn cached_spaces(state: State<'_, AppState>, account: String) -> Cmd<Vec<Spa
 
 #[tauri::command]
 pub async fn list_spaces(state: State<'_, AppState>, account: String) -> Cmd<Vec<Space>> {
-    let spaces = state.backend(&account).await?.list_spaces().await?;
-    state.store().put_spaces(&account, &spaces)?;
+    let mut spaces = state.backend(&account).await?.list_spaces().await?;
+    let mut store = state.store();
+    store.apply_flags(&account, &mut spaces)?;
+    store.put_spaces(&account, &spaces)?;
     Ok(spaces)
 }
 

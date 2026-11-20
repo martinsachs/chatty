@@ -20,7 +20,9 @@ use crate::backend::{Avatar, ChatBackend, EventSender};
 use crate::error::{Error, Result};
 use crate::model::{Account, Attachment, BackendKind, Message, Page, Space, UploadFile, User};
 use crate::secrets;
-use api::{ApiChannel, ApiMember, ApiPost, ApiTeam, ApiUser, Me, PostList, UploadResponse};
+use api::{
+    ApiChannel, ApiMember, ApiPost, ApiTeam, ApiUser, Me, PostList, Preference, UploadResponse,
+};
 
 const PAGE_SIZE: usize = 50;
 
@@ -275,7 +277,23 @@ impl MattermostBackend {
         let teams = lock(&self.teams).clone();
         let team = teams.iter().find(|t| t.id == ch.team_id);
         let name = self.space_name(&ch, team, teams.len() > 1);
-        Ok(api::map_channel(&ch, Some(&member), name))
+        let favorite = self.favorites().await?.contains(channel_id);
+        Ok(api::map_channel(&ch, Some(&member), name, favorite))
+    }
+
+    /// Kanal-IDs mit Preference `favorite_channel` = "true" (wie Webapp und Handy-App).
+    async fn favorites(&self) -> Result<HashSet<String>> {
+        let prefs: Vec<Preference> = match self.get("/users/me/preferences/favorite_channel").await
+        {
+            // Server meldet 404, solange es keinen Favoriten gibt.
+            Err(Error::Api { status: 404, .. }) => Vec::new(),
+            r => r?,
+        };
+        Ok(prefs
+            .into_iter()
+            .filter(|p| p.value == "true")
+            .map(|p| p.name)
+            .collect())
     }
 }
 
@@ -323,11 +341,12 @@ impl ChatBackend for MattermostBackend {
         }
         let channels: Vec<&ApiChannel> = rows.iter().map(|(c, _, _)| c).collect();
         self.ensure_dm_users(&channels).await?;
+        let favorites = self.favorites().await?;
         Ok(rows
             .iter()
             .map(|(ch, team, member)| {
                 let name = self.space_name(ch, Some(team), multi_team);
-                api::map_channel(ch, Some(member), name)
+                api::map_channel(ch, Some(member), name, favorites.contains(&ch.id))
             })
             .collect())
     }
@@ -461,7 +480,10 @@ impl ChatBackend for MattermostBackend {
                 channels
                     .iter()
                     .filter(|c| c.delete_at == 0 && !joined.contains(&c.id))
-                    .map(|c| api::map_channel(c, None, self.space_name(c, Some(team), multi_team))),
+                    .map(|c| {
+                        let name = self.space_name(c, Some(team), multi_team);
+                        api::map_channel(c, None, name, false)
+                    }),
             );
         }
         Ok(out)
@@ -512,6 +534,32 @@ impl ChatBackend for MattermostBackend {
         all.truncate(PAGE_SIZE);
         let refs: Vec<&ApiPost> = all.iter().collect();
         self.map_posts(&refs).await
+    }
+
+    async fn set_favorite(&self, space_id: &str, on: bool) -> Result<bool> {
+        let pref = json!([{
+            "user_id": self.me.id,
+            "category": "favorite_channel",
+            "name": space_id,
+            "value": if on { "true" } else { "false" },
+        }]);
+        let rb = self
+            .req(Method::PUT, &format!("/users/{}/preferences", self.me.id))
+            .json(&pref);
+        self.send_req(rb).await?;
+        Ok(true)
+    }
+
+    async fn set_muted(&self, space_id: &str, on: bool) -> Result<bool> {
+        let props = json!({ "mark_unread": if on { "mention" } else { "all" } });
+        let rb = self
+            .req(
+                Method::PUT,
+                &format!("/channels/{space_id}/members/{}/notify_props", self.me.id),
+            )
+            .json(&props);
+        self.send_req(rb).await?;
+        Ok(true)
     }
 
     async fn mark_read(&self, space_id: &str) -> Result<()> {

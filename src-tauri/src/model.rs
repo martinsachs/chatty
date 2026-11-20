@@ -43,6 +43,14 @@ pub struct Space {
     pub unread: bool,
     pub mention_count: u32,
     pub last_active: i64,
+    /// Nachrichten insgesamt (Sortierung), 0 wenn das Backend es nicht liefert.
+    #[serde(default)]
+    pub msg_count: i64,
+    #[serde(default)]
+    pub favorite: bool,
+    /// Stumm: keine Benachrichtigung und kein Fettdruck, außer bei Erwähnung.
+    #[serde(default)]
+    pub muted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

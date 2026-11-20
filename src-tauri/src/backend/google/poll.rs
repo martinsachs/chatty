@@ -274,6 +274,9 @@ mod tests {
             unread,
             mention_count: 0,
             last_active: t,
+            msg_count: 0,
+            favorite: false,
+            muted: false,
         };
         let prev: HashMap<_, _> = [s("a", 1, false), s("b", 1, false)]
             .into_iter()

@@ -36,7 +36,7 @@ impl Default for PollConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Config {
-    /// "mattermost" oder "slack".
+    /// "mattermost", "slack" oder "ehex".
     pub theme: String,
     /// OS-Benachrichtigungen bei DMs und Erwähnungen.
     pub notifications: bool,

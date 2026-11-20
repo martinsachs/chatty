@@ -43,6 +43,21 @@ pub struct ApiMember {
     pub msg_count: i64,
     pub msg_count_root: Option<i64>,
     pub mention_count: u32,
+    pub notify_props: NotifyProps,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct NotifyProps {
+    /// "mention" = stummgeschaltet, "all" = normal.
+    pub mark_unread: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Preference {
+    pub name: String,
+    pub value: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -211,7 +226,12 @@ pub fn dm_partner<'a>(channel_name: &'a str, me: &str) -> Option<&'a str> {
 }
 
 /// Channel (+ Mitgliedschaft) → Space. `name` ist der fertige Anzeigename.
-pub fn map_channel(ch: &ApiChannel, member: Option<&ApiMember>, name: String) -> Space {
+pub fn map_channel(
+    ch: &ApiChannel,
+    member: Option<&ApiMember>,
+    name: String,
+    favorite: bool,
+) -> Space {
     let kind = match ch.kind.as_str() {
         "D" => SpaceKind::Direct,
         "G" => SpaceKind::Group,
@@ -228,6 +248,9 @@ pub fn map_channel(ch: &ApiChannel, member: Option<&ApiMember>, name: String) ->
         unread,
         mention_count: member.map_or(0, |m| m.mention_count),
         last_active: ch.last_post_at,
+        msg_count: ch.total_msg_count,
+        favorite,
+        muted: member.is_some_and(|m| m.notify_props.mark_unread == "mention"),
     }
 }
 
@@ -349,7 +372,7 @@ mod tests {
         let read: ApiMember = serde_json::from_str(
             r#"{"channel_id":"c1","msg_count":8,"msg_count_root":7,"mention_count":0}"#,
         )?;
-        let s = map_channel(&ch, Some(&read), "T / Town Square".into());
+        let s = map_channel(&ch, Some(&read), "T / Town Square".into(), false);
         assert_eq!(s.kind, SpaceKind::Channel);
         assert!(!s.unread, "Antworten in Threads zählen nicht als ungelesen");
         assert_eq!(s.last_active, 42);
@@ -358,7 +381,7 @@ mod tests {
         let unread: ApiMember = serde_json::from_str(
             r#"{"channel_id":"c1","msg_count":5,"msg_count_root":5,"mention_count":2}"#,
         )?;
-        let s = map_channel(&ch, Some(&unread), String::new());
+        let s = map_channel(&ch, Some(&unread), String::new(), false);
         assert!(s.unread);
         assert_eq!(s.mention_count, 2);
         Ok(())
@@ -369,14 +392,17 @@ mod tests {
         let ch: ApiChannel =
             serde_json::from_str(r#"{"id":"d","type":"D","name":"me1__u2","total_msg_count":3}"#)?;
         let m: ApiMember = serde_json::from_str(r#"{"channel_id":"d","msg_count":2}"#)?;
-        let s = map_channel(&ch, Some(&m), "anna".into());
+        let s = map_channel(&ch, Some(&m), "anna".into(), false);
         assert_eq!(s.kind, SpaceKind::Direct);
         assert!(s.unread);
         assert_eq!(dm_partner(&ch.name, "me1"), Some("u2"));
         assert_eq!(dm_partner("me1__me1", "me1"), Some("me1"));
         assert_eq!(dm_partner("u2__me1", "me1"), Some("u2"));
         let g: ApiChannel = serde_json::from_str(r#"{"id":"g","type":"G"}"#)?;
-        assert_eq!(map_channel(&g, None, String::new()).kind, SpaceKind::Group);
+        assert_eq!(
+            map_channel(&g, None, String::new(), false).kind,
+            SpaceKind::Group
+        );
         Ok(())
     }
 }
