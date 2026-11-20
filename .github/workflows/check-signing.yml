@@ -34,4 +34,6 @@ jobs:
               d2 = dec(d.decode("ascii", "ignore"))
               print("doppelt Base64-kodiert:", bool(d2) and d2.startswith(b"untrusted comment:"))
           print("Bereits dekodiert eingefügt:", k.lstrip().startswith("untrusted comment:"))
+          if not (d and d.startswith(b"untrusted comment: rsign encrypted secret key")):
+              raise SystemExit("::error::Secret ist kein gültiger privater Updater-Schlüssel")
           PY
