@@ -1,8 +1,7 @@
 //! WebSocket-Ereignisse (`/api/v4/websocket`) mit automatischem Reconnect.
 //!
 //! Das Upgrade läuft über den reqwest-Client des Backends (HTTP/1.1). So nutzt auch `wss://`
-//! dessen TLS-Konfiguration; der eingebaute rustls-Connector von tokio-tungstenite würde ohne
-//! installierten Krypto-Provider abbrechen (ring und aws-lc-rs sind beide im Abhängigkeitsbaum).
+//! dessen TLS-Konfiguration und Timeouts; tokio-tungstenite übernimmt nur das Protokoll.
 
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};

@@ -149,6 +149,11 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
 - RAM nach P2 (2026-11-20, `scripts/ram.sh`, Median aus 3 Läufen): 237 MB PSS (chatty 86, WebProcess 134,
   NetworkProcess 17); chatty-Heap 14 MB, Bibliotheken 57 MB. WebKit-Cachemodell ohne Wirkung (ADR 04 abgelehnt).
 
+- P6 (2026-11-20): nur ring als TLS-Provider (aws-lc-rs und webpki-roots aus dem Baum), Release-Binary
+  17,2 → 14,5 MB; `https`/`wss` gegen den echten Server geprüft. Dateidialoge im Backend (ADR 06), CSP ohne
+  `https:`-Bilder, Konfigurations- und Datenverzeichnis 0700, Konfigdateien atomar mit 0600.
+  Nicht im Fenster geprüft: Anhang wählen/senden/speichern über die neuen Dialoge.
+
 ### Nicht getestet / offen
 - Google Chat live: kein OAuth-Client vorhanden. Unbestätigt: `orderBy` in Kleinschreibung,
   Upload als `multipart/related`, GET-Pfad des Lesestatus, `users/all` für @all, Scope-Namen im Detail.

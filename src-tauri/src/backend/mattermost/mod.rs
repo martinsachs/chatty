@@ -60,6 +60,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 fn http_client() -> Result<Client> {
+    crate::backend::init_tls();
     Ok(Client::builder()
         .http1_only()
         .connect_timeout(CONNECT_TIMEOUT)

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { save } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { api, avatarSrc, type Attachment, type Message } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
@@ -49,11 +48,8 @@
   async function download(a: Attachment) {
     if (!chat.account) return;
     if (a.url && !a.id) return openUrl(a.url);
-    const dest = await save({ defaultPath: a.name });
-    if (!dest) return;
     try {
-      await api.download(chat.account, a, dest);
-      chat.toast(`${a.name} gespeichert`);
+      if (await api.saveAttachment(chat.account, a)) chat.toast(`${a.name} gespeichert`);
     } catch (e) {
       if (a.url) openUrl(a.url);
       else chat.toast(String(e), "error");

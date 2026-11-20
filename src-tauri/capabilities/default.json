@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Hauptfenster und abgel\u00f6ste Chatfenster",
+  "description": "Hauptfenster und abgelöste Chatfenster",
   "windows": [
     "main",
     "space-*"
@@ -9,7 +9,6 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "dialog:default",
     "notification:default",
     "updater:default",
     "process:allow-restart"

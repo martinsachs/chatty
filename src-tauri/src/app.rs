@@ -37,6 +37,65 @@ pub struct AppState {
     active: Mutex<HashMap<String, String>>,
     /// Profilbilder je "konto/nutzer"; die Zelle lädt jedes Bild nur einmal.
     avatars: Mutex<HashMap<String, AvatarCell>>,
+    /// Im Dialog gewählte Dateien; das Frontend kennt nur IDs und Namen (ADR 06).
+    picked: Picked,
+}
+
+/// Für das Frontend: gewählte Datei ohne Pfad.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct PickedFile {
+    pub id: u64,
+    pub name: String,
+}
+
+/// Gewählte Dateipfade unter fortlaufenden IDs; gültig bis zum erfolgreichen Senden.
+#[derive(Default)]
+pub struct Picked(Mutex<(u64, HashMap<u64, PathBuf>)>);
+
+impl Picked {
+    fn lock(&self) -> std::sync::MutexGuard<'_, (u64, HashMap<u64, PathBuf>)> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    pub fn add(&self, paths: Vec<PathBuf>) -> Vec<PickedFile> {
+        let mut guard = self.lock();
+        let (next, map) = &mut *guard;
+        paths
+            .into_iter()
+            .map(|path| {
+                *next += 1;
+                let name = file_name(&path);
+                map.insert(*next, path);
+                PickedFile { id: *next, name }
+            })
+            .collect()
+    }
+
+    pub fn paths(&self, ids: &[u64]) -> Result<Vec<PathBuf>> {
+        let guard = self.lock();
+        ids.iter()
+            .map(|id| {
+                guard
+                    .1
+                    .get(id)
+                    .cloned()
+                    .ok_or_else(|| Error::other("Datei nicht mehr verfügbar, bitte neu wählen"))
+            })
+            .collect()
+    }
+
+    pub fn remove(&self, ids: &[u64]) {
+        let mut guard = self.lock();
+        for id in ids {
+            guard.1.remove(id);
+        }
+    }
+}
+
+fn file_name(path: &std::path::Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "datei".into())
 }
 
 type AvatarCell = Arc<tokio::sync::OnceCell<Option<Avatar>>>;
@@ -98,6 +157,7 @@ pub fn setup(app: &AppHandle) -> Result<()> {
         tx,
         active: Mutex::new(HashMap::new()),
         avatars: Mutex::new(HashMap::new()),
+        picked: Picked::default(),
     });
 
     tauri::async_runtime::spawn(event_loop(app.clone(), rx));
@@ -501,15 +561,11 @@ pub async fn send_message(
     space: String,
     text: String,
     thread: Option<String>,
-    files: Vec<String>,
+    files: Vec<u64>,
 ) -> Cmd<Message> {
     let mut uploads = Vec::new();
-    for path in files {
-        let path = PathBuf::from(path);
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "datei".into());
+    for path in state.picked.paths(&files)? {
+        let name = file_name(&path);
         let data = tokio::fs::read(&path).await?;
         uploads.push(UploadFile {
             mime: mime_for(&name).into(),
@@ -521,10 +577,55 @@ pub async fn send_message(
     let msg = backend
         .send(&space, &text, thread.as_deref(), uploads)
         .await?;
+    state.picked.remove(&files);
     state
         .store()
         .put_messages(&account, std::slice::from_ref(&msg))?;
     Ok(msg)
+}
+
+/// Öffnen-Dialog im Backend; liefert IDs statt Pfaden (ADR 06).
+#[tauri::command]
+pub async fn pick_files(app: AppHandle, state: State<'_, AppState>) -> Cmd<Vec<PickedFile>> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().pick_files(move |paths| {
+        let _ = tx.send(paths);
+    });
+    let paths: Vec<PathBuf> = rx
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|p| p.into_path().ok())
+        .collect();
+    Ok(state.picked.add(paths))
+}
+
+/// Speichern-Dialog im Backend, schreibt den Anhang selbst. `false` = abgebrochen.
+#[tauri::command]
+pub async fn save_attachment(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account: String,
+    attachment: Attachment,
+) -> Cmd<bool> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(&attachment.name)
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx.await.ok().flatten() else {
+        return Ok(false);
+    };
+    let path = path.into_path().map_err(|e| Error::other(e.to_string()))?;
+    let data = state.backend(&account).await?.download(&attachment).await?;
+    tokio::fs::write(path, data).await?;
+    Ok(true)
 }
 
 fn mime_for(name: &str) -> &'static str {
@@ -586,18 +687,6 @@ pub async fn react(
     } else {
         b.unreact(&space, &id, &emoji).await
     }
-}
-
-#[tauri::command]
-pub async fn download_attachment(
-    state: State<'_, AppState>,
-    account: String,
-    attachment: Attachment,
-    dest: String,
-) -> Cmd<()> {
-    let data = state.backend(&account).await?.download(&attachment).await?;
-    tokio::fs::write(dest, data).await?;
-    Ok(())
 }
 
 #[tauri::command]
@@ -713,4 +802,32 @@ async fn avatar(app: &AppHandle, path: &str) -> Option<Avatar> {
     .await
     .ok()?
     .clone()
+}
+
+#[cfg(test)]
+mod picked_tests {
+    use super::*;
+
+    #[test]
+    fn picked_ids_until_removed() {
+        let picked = Picked::default();
+        let files = picked.add(vec![
+            PathBuf::from("/tmp/a.txt"),
+            PathBuf::from("/tmp/b.png"),
+        ]);
+        assert_eq!(
+            files.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+            ["a.txt", "b.png"]
+        );
+        let ids: Vec<u64> = files.iter().map(|f| f.id).collect();
+        assert_eq!(picked.paths(&ids).unwrap().len(), 2);
+        assert!(picked.paths(&[999]).is_err(), "unbekannte ID");
+        assert_eq!(
+            picked.paths(&ids).unwrap().len(),
+            2,
+            "lesen verbraucht nicht"
+        );
+        picked.remove(&ids);
+        assert!(picked.paths(&ids[..1]).is_err(), "nach dem Senden entfernt");
+    }
 }

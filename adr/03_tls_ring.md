@@ -1,6 +1,6 @@
 # ADR 03: Ein Krypto-Provider (ring) für rustls
 
-Status: vorgeschlagen (2026-11-20)
+Status: angenommen und umgesetzt (2026-11-20)
 
 ## Kontext
 

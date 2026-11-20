@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { api, type PickedFile } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
 
   let {
@@ -9,24 +9,25 @@
   }: { placeholder: string; thread?: string | null; onEditLast?: () => void } = $props();
 
   let text = $state("");
-  let files = $state<string[]>([]);
+  let files = $state<PickedFile[]>([]);
   let sending = $state(false);
   let area: HTMLTextAreaElement;
 
   async function pick() {
-    const picked = await open({ multiple: true });
-    if (picked) files = [...files, ...(Array.isArray(picked) ? picked : [picked])];
+    const picked = await chat.guard(api.pickFiles());
+    if (picked?.length) files = [...files, ...picked];
   }
 
   async function submit() {
     const t = text.trim();
     if ((!t && !files.length) || sending) return;
     sending = true;
-    const f = files;
-    text = "";
-    files = [];
     try {
-      await chat.send(t, f, thread);
+      // Text und Dateien erst nach Erfolg leeren, damit ein Fehlschlag nichts verliert.
+      if (await chat.send(t, files.map((f) => f.id), thread)) {
+        text = "";
+        files = [];
+      }
     } finally {
       sending = false;
       area?.focus();
@@ -52,9 +53,9 @@
 <div class="composer">
   {#if files.length}
     <div class="chips">
-      {#each files as f, i (f)}
+      {#each files as f, i (f.id)}
         <span class="chip">
-          {f.split(/[\\/]/).pop()}
+          {f.name}
           <button class="icon-btn" title="Entfernen" onclick={() => (files = files.filter((_, j) => j !== i))}>×</button>
         </span>
       {/each}

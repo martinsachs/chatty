@@ -8,6 +8,7 @@ pub mod store;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    backend::init_tls();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
@@ -39,7 +40,8 @@ pub fn run() {
             app::edit_message,
             app::delete_message,
             app::react,
-            app::download_attachment,
+            app::pick_files,
+            app::save_attachment,
             app::search,
             app::mark_read,
             app::set_active,

@@ -211,12 +211,14 @@ class Chat {
     }
   }
 
-  async send(text: string, files: string[], thread: string | null = null) {
-    if (!this.account || !this.space) return;
+  /** `true`, wenn gesendet (der Composer leert erst dann seine Dateiliste). */
+  async send(text: string, files: number[], thread: string | null = null): Promise<boolean> {
+    if (!this.account || !this.space) return false;
     const msg = await this.guard(api.send(this.account, this.space, text, thread, files));
-    if (!msg) return;
+    if (!msg) return false;
     this.upsert(msg, true);
     if (thread && this.rhs?.kind === "thread") this.upsertReply(msg);
+    return true;
   }
 
   async edit(m: Message, text: string) {

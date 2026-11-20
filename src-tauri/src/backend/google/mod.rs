@@ -45,6 +45,7 @@ pub struct GoogleBackend {
 }
 
 fn http_client() -> Result<reqwest::Client> {
+    crate::backend::init_tls();
     Ok(reqwest::Client::builder()
         .user_agent(concat!("chatty/", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(60))
@@ -536,7 +537,7 @@ impl ChatBackend for GoogleBackend {
 #[cfg(test)]
 impl GoogleBackend {
     fn for_test(ep: Endpoints, me: &str) -> Self {
-        let http = reqwest::Client::new();
+        let http = http_client().expect("HTTP-Client");
         let cfg = GoogleConfig {
             client_id: "cid".into(),
             client_secret: String::new(),

@@ -55,22 +55,54 @@ impl Default for Config {
     }
 }
 
-/// Verzeichnis für Konfiguration (Linux: ~/.config/chatty).
+/// Verzeichnis für Konfiguration (Linux: ~/.config/chatty), nur für den Nutzer lesbar.
 pub fn config_dir() -> Result<PathBuf> {
     let dir = dirs::config_dir()
         .ok_or_else(|| Error::other("Kein Konfigurationsverzeichnis gefunden"))?
         .join("chatty");
-    std::fs::create_dir_all(&dir)?;
+    private_dir(&dir)?;
     Ok(dir)
 }
 
-/// Verzeichnis für den Nachrichten-Cache (Linux: ~/.local/share/chatty).
+/// Verzeichnis für den Nachrichten-Cache (Linux: ~/.local/share/chatty), nur für den Nutzer lesbar.
 pub fn data_dir() -> Result<PathBuf> {
     let dir = dirs::data_dir()
         .ok_or_else(|| Error::other("Kein Datenverzeichnis gefunden"))?
         .join("chatty");
-    std::fs::create_dir_all(&dir)?;
+    private_dir(&dir)?;
     Ok(dir)
+}
+
+/// Verzeichnis anlegen und (Unix) auf 0700 setzen, auch wenn es schon existiert.
+pub fn private_dir(dir: &Path) -> Result<()> {
+    std::fs::create_dir_all(dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
+/// Datei atomar ersetzen: Temp-Datei im selben Verzeichnis (Unix: 0600 vor dem Inhalt), dann `rename`.
+/// Ein Absturz hinterlässt so nie eine halbe Datei.
+pub fn write_private(path: &Path, data: &[u8]) -> Result<()> {
+    let tmp = path.with_extension("tmp");
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
+    let mut file = opts.open(&tmp)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    std::io::Write::write_all(&mut file, data)?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(&tmp, path)?;
+    Ok(())
 }
 
 pub fn load_config(dir: &Path) -> Result<Config> {
@@ -84,20 +116,8 @@ pub fn load_config(dir: &Path) -> Result<Config> {
 
 pub fn save_config(dir: &Path, cfg: &Config) -> Result<()> {
     let text = toml::to_string_pretty(cfg).map_err(|e| Error::other(e.to_string()))?;
-    let path = dir.join("chatty.toml");
-    let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(true);
-    // Enthält ggf. das Google-Client-Secret: nur für den Nutzer lesbar, Rechte vor dem Inhalt setzen.
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
-    let mut file = opts.open(&path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
-    }
-    std::io::Write::write_all(&mut file, text.as_bytes())?;
-    Ok(())
+    // Enthält ggf. das Google-Client-Secret: nur für den Nutzer lesbar.
+    write_private(&dir.join("chatty.toml"), text.as_bytes())
 }
 
 pub fn load_accounts(dir: &Path) -> Result<Vec<Account>> {
@@ -109,11 +129,10 @@ pub fn load_accounts(dir: &Path) -> Result<Vec<Account>> {
 }
 
 pub fn save_accounts(dir: &Path, accounts: &[Account]) -> Result<()> {
-    std::fs::write(
-        dir.join("accounts.json"),
-        serde_json::to_string_pretty(accounts)?,
-    )?;
-    Ok(())
+    write_private(
+        &dir.join("accounts.json"),
+        serde_json::to_string_pretty(accounts)?.as_bytes(),
+    )
 }
 
 #[cfg(test)]
@@ -147,6 +166,29 @@ mod tests {
                 .mode();
             assert_eq!(mode & 0o777, 0o600);
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_dir_and_atomic_write() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = tempfile::tempdir().unwrap();
+        let dir = base.path().join("chatty");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        private_dir(&dir).unwrap();
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&dir), 0o700, "bestehendes Verzeichnis nachgezogen");
+
+        let file = dir.join("accounts.json");
+        write_private(&file, b"alt").unwrap();
+        write_private(&file, b"neu und laenger").unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"neu und laenger");
+        assert_eq!(mode(&file), 0o600);
+        assert!(
+            !file.with_extension("tmp").exists(),
+            "keine Temp-Datei übrig"
+        );
     }
 
     #[test]

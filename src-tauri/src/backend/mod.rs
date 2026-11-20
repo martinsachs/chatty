@@ -1,5 +1,14 @@
 //! Schnittstelle zwischen App und Chat-Diensten. Ein Objekt je Konto.
 
+/// rustls-Provider (ring) einmalig als Standard installieren; vor jedem HTTP-Client aufrufen (ADR 03).
+pub fn init_tls() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        // Fehler heißt: schon ein Provider installiert – dann ist nichts zu tun.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
 pub mod google;
 pub mod mattermost;
 

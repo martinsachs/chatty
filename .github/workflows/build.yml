@@ -42,3 +42,8 @@ jobs:
       - name: test
         working-directory: src-tauri
         run: cargo test
+
+      # ADR 03: nur ring als Krypto-Provider.
+      - name: kein aws-lc-rs
+        working-directory: src-tauri
+        run: "! cargo tree --target all -i aws-lc-rs >/dev/null 2>&1"

@@ -30,6 +30,12 @@ export interface User {
   avatar_url?: string | null;
 }
 
+/** Im Dialog gewählte Datei (Pfad bleibt im Backend). */
+export interface PickedFile {
+  id: number;
+  name: string;
+}
+
 export type Theme = "mattermost" | "slack" | "ehex";
 
 export interface Space {
@@ -115,15 +121,18 @@ export const api = {
     invoke<Page>("list_messages", { account, space, cursor }),
   listThread: (account: string, space: string, thread: string) =>
     invoke<Message[]>("list_thread", { account, space, thread }),
-  send: (account: string, space: string, text: string, thread: string | null, files: string[]) =>
+  /** Öffnen-Dialog im Backend; liefert IDs statt Pfaden. */
+  pickFiles: () => invoke<PickedFile[]>("pick_files"),
+  send: (account: string, space: string, text: string, thread: string | null, files: number[]) =>
     invoke<Message>("send_message", { account, space, text, thread, files }),
   edit: (account: string, space: string, id: string, text: string) =>
     invoke<Message>("edit_message", { account, space, id, text }),
   remove: (account: string, space: string, id: string) => invoke<void>("delete_message", { account, space, id }),
   react: (account: string, space: string, id: string, emoji: string, add: boolean) =>
     invoke<void>("react", { account, space, id, emoji, add }),
-  download: (account: string, attachment: Attachment, dest: string) =>
-    invoke<void>("download_attachment", { account, attachment, dest }),
+  /** Speichern-Dialog im Backend; `false` = abgebrochen. */
+  saveAttachment: (account: string, attachment: Attachment) =>
+    invoke<boolean>("save_attachment", { account, attachment }),
   search: (account: string, query: string) => invoke<Message[]>("search", { account, query }),
   markRead: (account: string, space: string) => invoke<void>("mark_read", { account, space }),
   setActive: (account: string, space: string | null) => invoke<void>("set_active", { account, space }),
