@@ -146,6 +146,9 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
   WebSocket `user_updated`. Integrationstest: Kurzcode und Status grün; Seitenleiste mit Status per
   Screenshot geprüft; Server-Emoji-Bild im Text nur über `formatText` geprüft, nicht im Fenster.
 
+- RAM nach P2 (2026-11-20, `scripts/ram.sh`, Median aus 3 Läufen): 237 MB PSS (chatty 86, WebProcess 134,
+  NetworkProcess 17); chatty-Heap 14 MB, Bibliotheken 57 MB. WebKit-Cachemodell ohne Wirkung (ADR 04 abgelehnt).
+
 ### Nicht getestet / offen
 - Google Chat live: kein OAuth-Client vorhanden. Unbestätigt: `orderBy` in Kleinschreibung,
   Upload als `multipart/related`, GET-Pfad des Lesestatus, `users/all` für @all, Scope-Namen im Detail.

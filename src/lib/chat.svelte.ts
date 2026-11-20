@@ -55,10 +55,11 @@ class Chat {
     return this.accounts.find((a) => a.id === this.account);
   }
 
-  async init() {
+  /** `only`: abgelöstes Fenster lädt nur die Spaces seines Kontos. */
+  async init(only?: string) {
     await this.refreshInfo();
     await listen<ChatEvent>("chat-event", (e) => this.onEvent(e.payload));
-    for (const a of this.accounts) await this.loadSpaces(a.id);
+    for (const a of this.accounts) if (!only || a.id === only) await this.loadSpaces(a.id);
   }
 
   async refreshInfo() {

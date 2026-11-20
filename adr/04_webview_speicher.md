@@ -1,6 +1,6 @@
 # ADR 04: Speicherprofil der WebView
 
-Status: vorgeschlagen (2026-11-20), Übernahme nur mit Messnachweis; ohne Nachweis „abgelehnt“
+Status: abgelehnt (2026-11-20): Messung ohne Nutzen
 
 ## Kontext
 
@@ -27,3 +27,15 @@ Hardware-Beschleunigung bleibt an (Abschalten kostet CPU beim Scrollen; nur bei 
 - Windows/macOS unverändert (anderes WebView, keine vergleichbare Einstellung nötig).
 - Weniger Cache kann wiederholtes Laden von Avataren auslösen; die Antwort von `avatar://` setzt
   `Cache-Control`, das Backend hält die Bytes ohnehin im Speicher.
+
+## Messung (2026-11-20)
+
+`scripts/ram.sh`, Release-Build, 1 Mattermost-Konto über den Test-Proxy, 60 s, je drei Läufe (Median):
+
+| Build | Summe PSS | chatty | WebKitWebProcess | WebKitNetworkProcess |
+|---|---|---|---|---|
+| ohne S1 (`eda38da`) | 237 MB | 86 MB | 134 MB | 17 MB |
+| mit `DocumentViewer` | 237 MB | 85 MB | 134 MB | 17 MB |
+
+Das Log bestätigt, dass das Modell gesetzt ist. Im Leerlauf sind die Caches ohnehin leer; die WebView-Grundlast
+hängt nicht am Cachemodell. Die Änderung wurde nicht übernommen.

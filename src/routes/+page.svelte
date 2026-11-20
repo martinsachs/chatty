@@ -18,7 +18,7 @@
     // Abgelöstes Fenster: #popout/<konto>/<space>
     const m = location.hash.match(/^#popout\/([^/]+)\/(.+)$/);
     chat.popout = !!m;
-    await chat.init();
+    await chat.init(m ? decodeURIComponent(m[1]) : undefined);
     if (m) {
       await chat.openSpace(decodeURIComponent(m[1]), decodeURIComponent(m[2]));
     } else {

@@ -6,7 +6,7 @@ chatty soll mit wenig Speicher laufen, unter Last flüssig bleiben und den Serve
 
 | Größe | Ziel | Quelle | Stand v0.1.1 |
 |---|---|---|---|
-| RAM (PSS-Summe aller Prozesse, Linux, 60 s nach Start) | < 150 MB mit 2 Konten | [00_plan](../adr/00_plan.md), offene Punkte | 241 MB mit 1 Mattermost-Konto (chatty 88, WebKitWebProcess 135, WebKitNetworkProcess 17) |
+| RAM (PSS-Summe aller Prozesse, Linux, 60 s nach Start) | < 150 MB mit 2 Konten | [00_plan](../adr/00_plan.md), offene Punkte | 241 MB mit 1 Mattermost-Konto (chatty 88, WebKitWebProcess 135, WebKitNetworkProcess 17); 2026-11-20 nach P2: 237 MB (86/134/17), chatty davon eigener Heap 14 MB, Bibliotheken 57 MB |
 | REST-Aufrufe je eingehender Mattermost-Nachricht (Kanal und Absender bekannt) | 0 | dieses Dokument | 3–4 |
 | Abrisse der WebSocket-Verbindung am echten Server in 5 min | 0 | dieses Dokument | 0 (seit Client-Ping, [ADR 01](../adr/01_mattermost_websocket.md)) |
 
@@ -33,7 +33,7 @@ Entscheidung: **umsetzen**, **messen** (nur übernehmen, wenn die Messung den Nu
 | # | Pri | Befund | Maßnahme | Entscheidung |
 |---|---|---|---|---|
 | S7 | H | Für die 88 MB des Hauptprozesses gibt es keine Aufschlüsselung. Unklar, ob das Ziel erreichbar ist. | `/proc/<pid>/smaps` auswerten: eigener Heap (`Private_Dirty` von `[heap]` und anonymen Bereichen) gegenüber geteilten Bibliotheken (GTK, WebKit). Ergebnis in die Tabelle „Ziel“. | umsetzen (erster Schritt von P3) |
-| S1 | H | WebKitGTK läuft mit Standard-Cachemodell; die WebView ist mit 135 MB der größte Posten. | Cachemodell `DocumentViewer` am `WebContext` per `with_webview` im `setup`. Neue Abhängigkeit `webkit2gtk = "2.0"` (wie über wry im Lockfile, 2.0.2), nur `cfg(target_os = "linux")`. Ob die Einstellung nach dem Start des Hauptfensters noch greift, zeigen `get_cache_model()` im Log und die Messung; haben Popouts einen eigenen Context, auch in `open_space_window`. | messen, [ADR 04](../adr/04_webview_speicher.md) |
+| S1 | H | WebKitGTK läuft mit Standard-Cachemodell; die WebView ist mit 135 MB der größte Posten. | Cachemodell `DocumentViewer` am `WebContext` per `with_webview` im `setup`. Neue Abhängigkeit `webkit2gtk = "2.0"` (wie über wry im Lockfile, 2.0.2), nur `cfg(target_os = "linux")`. Ob die Einstellung nach dem Start des Hauptfensters noch greift, zeigen `get_cache_model()` im Log und die Messung; haben Popouts einen eigenen Context, auch in `open_space_window`. | gemessen: kein Nutzen (237 → 237 MB), abgelehnt, [ADR 04](../adr/04_webview_speicher.md) |
 | S2 | M | Nachrichtenliste wächst beim Zurückscrollen unbegrenzt; die 60-s-Messung berührt das nicht. | Nur wenn der Messlauf „300 Nachrichten“ im WebProcess > 20 MB über „50 Nachrichten“ liegt: Fenster nach [ADR 05](../adr/05_nachrichtenfenster.md), nur Mattermost. | messen |
 | S3 | M | `messages` ist tief reaktiv (`$state`). | Nur zusammen mit S2, siehe ADR 05. | messen mit S2 |
 | S4 | M | Abgelöstes Fenster lädt beim Start Spaces aller Konten aus Cache und Server. | Popout lädt nur sein Konto. | umsetzen |
@@ -249,7 +249,10 @@ Nachweis (Unit-Tests im Testmodul von `google/mod.rs`, wo der HTTP-Mock liegt; o
 
 ## Offene Punkte
 
-- Ob < 150 MB unter Linux erreichbar ist, zeigen S7 und S1. Bleibt der WebProcess über 100 MB, wird das
-  Ziel für Linux angepasst statt die Oberfläche zu verarmen.
+- S7 und S1 (2026-11-20): Der Hauptprozess hat nur 14 MB eigenen Heap, der Rest sind GTK/WebKit-Bibliotheken;
+  der WebProcess liegt im Leerlauf bei 134 MB und reagiert nicht auf das Cachemodell. < 150 MB ist mit
+  WebKitGTK nicht erreichbar, ohne die Oberfläche zu verarmen. Vorschlag: Ziel für Linux auf < 250 MB mit einem
+  Konto anpassen (Entscheidung Martin).
+- S2/S3: Messlauf „50 gegenüber 300 geladene Nachrichten“ braucht Scrollen im Fenster und steht noch aus.
 - Windows (WebView2) und macOS (WKWebView) sind nicht gemessen.
 - Google-Maßnahmen (P5) sind nur gegen den Mock geprüft, bis ein OAuth-Client existiert.

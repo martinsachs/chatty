@@ -15,9 +15,13 @@ use chatty_lib::model::{Account, BackendKind};
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let [id, server, secs] = args.as_slice() else {
-        return Err(Error::other("Aufruf: mm_watch <konto-id> <server-url> <sekunden>"));
+        return Err(Error::other(
+            "Aufruf: mm_watch <konto-id> <server-url> <sekunden>",
+        ));
     };
-    let secs: u64 = secs.parse().map_err(|_| Error::other("Sekunden ungültig"))?;
+    let secs: u64 = secs
+        .parse()
+        .map_err(|_| Error::other("Sekunden ungültig"))?;
     let backend = Arc::new(
         MattermostBackend::restore(Account {
             id: id.clone(),
