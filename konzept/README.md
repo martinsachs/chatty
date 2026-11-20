@@ -3,5 +3,7 @@
 | Dokument | Inhalt |
 |---|---|
 | [../adr/00_plan.md](../adr/00_plan.md) | Plan, Entscheidungen, Architektur, Meilensteine |
+| [optimierung.md](optimierung.md) | Analyse v0.1.1, Befunde, Optimierungspakete, RAM-Messverfahren |
+| ADRs [01](../adr/01_mattermost_websocket.md)–[07](../adr/07_polling_fokus.md) | WebSocket, Favoriten/Stumm, TLS-Provider, WebView-Speicher, Nachrichtenfenster, Dateipfade, Google-Polling nach Fokus |
 | [google-setup.md](google-setup.md) | Google-Cloud-Projekt und OAuth-Client einrichten (Admin) |
 | [../usage.md](../usage.md) | Installation, Konfiguration, Bedienung, Releases |
