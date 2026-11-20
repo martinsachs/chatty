@@ -1,7 +1,7 @@
 <script lang="ts">
   import { save } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { api, type Attachment, type Message } from "$lib/api";
+  import { api, avatarSrc, type Attachment, type Message } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
   import { colorFor, formatText, initials, QUICK_EMOJI, size, time } from "$lib/format";
 
@@ -14,6 +14,15 @@
   let editing = $state(false);
   let draft = $state("");
   let picker = $state(false);
+  let avatarFailed = $state(false);
+
+  // Mattermost liefert Profilbilder nur mit Token: über das Backend (avatar://) laden.
+  const avatar = $derived(
+    m.sender.avatar_url ??
+      (chat.accounts.find((a) => a.id === chat.account)?.kind === "mattermost" && chat.account
+        ? avatarSrc(chat.account, m.sender.id)
+        : null),
+  );
 
   export function startEdit() {
     draft = m.text;
@@ -64,8 +73,8 @@
   <div class="gutter">
     {#if compact}
       <span class="hover-time">{time(m.created)}</span>
-    {:else if m.sender.avatar_url}
-      <img class="avatar" src={m.sender.avatar_url} alt="" loading="lazy" />
+    {:else if avatar && !avatarFailed}
+      <img class="avatar" src={avatar} alt="" loading="lazy" onerror={() => (avatarFailed = true)} />
     {:else}
       <div class="avatar" style:background={colorFor(m.sender.name)}>{initials(m.sender.name)}</div>
     {/if}

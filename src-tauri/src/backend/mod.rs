@@ -14,6 +14,13 @@ use crate::model::{Account, Attachment, BackendEvent, Message, Page, Space, Uplo
 /// Ereigniskanal: (Konto-ID, Ereignis).
 pub type EventSender = mpsc::UnboundedSender<(String, BackendEvent)>;
 
+/// Bilddaten mit MIME-Typ.
+#[derive(Debug, Clone)]
+pub struct Avatar {
+    pub data: Vec<u8>,
+    pub mime: String,
+}
+
 #[async_trait]
 pub trait ChatBackend: Send + Sync {
     fn account(&self) -> &Account;
@@ -47,6 +54,11 @@ pub trait ChatBackend: Send + Sync {
     async fn unreact(&self, space_id: &str, message_id: &str, emoji: &str) -> Result<()>;
 
     async fn download(&self, attachment: &Attachment) -> Result<Vec<u8>>;
+
+    /// Profilbild eines Nutzers, falls das Backend es nur authentifiziert liefert.
+    async fn avatar(&self, _user_id: &str) -> Result<Option<Avatar>> {
+        Ok(None)
+    }
 
     /// Serverseitige Volltextsuche über alle Spaces des Kontos.
     async fn search(&self, query: &str) -> Result<Vec<Message>>;

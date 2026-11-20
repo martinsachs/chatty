@@ -11,7 +11,7 @@ use tokio::sync::{RwLock, mpsc, watch};
 
 use crate::backend::google::GoogleBackend;
 use crate::backend::mattermost::MattermostBackend;
-use crate::backend::{ChatBackend, EventSender};
+use crate::backend::{Avatar, ChatBackend, EventSender};
 use crate::config::{self, Config, GoogleConfig};
 use crate::error::{Error, Result};
 use crate::model::{
@@ -35,7 +35,11 @@ pub struct AppState {
     tx: EventSender,
     /// Offener Space je Konto (für Benachrichtigungen).
     active: Mutex<HashMap<String, String>>,
+    /// Profilbilder je "konto/nutzer"; die Zelle lädt jedes Bild nur einmal.
+    avatars: Mutex<HashMap<String, AvatarCell>>,
 }
+
+type AvatarCell = Arc<tokio::sync::OnceCell<Option<Avatar>>>;
 
 impl AppState {
     fn store(&self) -> std::sync::MutexGuard<'_, Store> {
@@ -93,6 +97,7 @@ pub fn setup(app: &AppHandle) -> Result<()> {
         store: Mutex::new(store),
         tx,
         active: Mutex::new(HashMap::new()),
+        avatars: Mutex::new(HashMap::new()),
     });
 
     tauri::async_runtime::spawn(event_loop(app.clone(), rx));
@@ -361,6 +366,12 @@ pub async fn remove_account(state: State<'_, AppState>, account: String) -> Cmd<
     }
     secrets::delete(&account)?;
     state.store().delete_account(&account)?;
+    let prefix = format!("{account}/");
+    state
+        .avatars
+        .lock()
+        .map_err(|_| Error::other("lock"))?
+        .retain(|k, _| !k.starts_with(&prefix));
     let mut list = state.accounts.lock().map_err(|_| Error::other("lock"))?;
     list.retain(|a| a.id != account);
     config::save_accounts(&state.cfg_dir, &list)
@@ -576,4 +587,52 @@ pub fn open_space_window(app: AppHandle, account: String, space: String, title: 
 
 fn urlencode(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
+}
+
+/// URL-Schema `avatar://localhost/<konto>/<nutzer>` (Windows: `http://avatar.localhost/...`):
+/// lädt Profilbilder über das Backend, weil der Server sie nur mit Token herausgibt.
+pub fn avatar_protocol(
+    ctx: tauri::UriSchemeContext<'_, tauri::Wry>,
+    request: tauri::http::Request<Vec<u8>>,
+    responder: tauri::UriSchemeResponder,
+) {
+    let app = ctx.app_handle().clone();
+    let path = request.uri().path().trim_start_matches('/').to_string();
+    tauri::async_runtime::spawn(async move {
+        let response = match avatar(&app, &path).await {
+            Some(a) => tauri::http::Response::builder()
+                .header("Content-Type", a.mime)
+                .header("Cache-Control", "max-age=86400")
+                .body(a.data),
+            None => tauri::http::Response::builder()
+                .status(404)
+                .body(Vec::new()),
+        };
+        responder.respond(response.unwrap_or_default());
+    });
+}
+
+async fn avatar(app: &AppHandle, path: &str) -> Option<Avatar> {
+    let (account, user) = path.split_once('/')?;
+    let valid = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    };
+    if !valid(account) || !valid(user) {
+        return None;
+    }
+    let state = app.state::<AppState>();
+    let cell = state
+        .avatars
+        .lock()
+        .ok()?
+        .entry(path.to_string())
+        .or_default()
+        .clone();
+    // Fehler (z. B. Konto noch nicht angemeldet) werden nicht gemerkt, der nächste Abruf versucht es neu.
+    cell.get_or_try_init(|| async { state.backend(account).await?.avatar(user).await })
+        .await
+        .ok()?
+        .clone()
 }

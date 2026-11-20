@@ -132,6 +132,7 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
   Reaktionen, Suche, Paging, Löschen, WebSocket-Ereignisse, Reconnect nach Server-Neustart).
 - UI (Mattermost-Container): Verlauf, Formatierung, Thread-Zähler, Reaktionen, Live-Nachricht,
   Erwähnung, Ungelesen-Badge, In-App-Hinweis, beide Optiken.
+- Mattermost-Profilbilder über das Schema `avatar://` (Backend lädt mit Token), Linux.
 - RAM (Linux, Release-Build, WebKitGTK, 1 Mattermost-Konto, nach 60 s): Summe PSS 241 MB
   (chatty 88, WebKitWebProcess 135, WebKitNetworkProcess 17), RSS 455 MB. Ziel < 150 MB verfehlt;
   der Großteil ist die WebView-Grundlast. Windows (WebView2) und macOS (WKWebView) nicht gemessen.
@@ -141,8 +142,8 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
   Upload als `multipart/related`, GET-Pfad des Lesestatus, `users/all` für @all, Scope-Namen im Detail.
 - Google: `reply_count` zählt nur Antworten auf derselben 50er-Seite; erste Space-Liste fragt den
   Lesestatus je Space einmal ab (Quote).
-- Mattermost: `wss://` gegen echten TLS-Server, MFA-Login, Gruppen-DMs; keine Avatare (Bild braucht
-  Bearer-Token); `reply_count` nur clientseitig hochgezählt.
+- Mattermost: `wss://` gegen echten TLS-Server, MFA-Login, Gruppen-DMs; `reply_count` nur clientseitig
+  hochgezählt. Neues Profilbild erst nach Neustart (Bilder bleiben je Sitzung im Speicher).
 - Windows/macOS-Installer und Updater-Ablauf erst mit dem ersten Tag-Build.
 - rustls: ring und aws-lc-rs sind beide im Baum; WebSocket läuft deshalb über reqwests TLS.
   `tokio_tungstenite::connect_async` mit wss nicht verwenden (Panic ohne Default-Provider).

@@ -16,7 +16,7 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 use tokio::sync::watch;
 
-use crate::backend::{ChatBackend, EventSender};
+use crate::backend::{Avatar, ChatBackend, EventSender};
 use crate::error::{Error, Result};
 use crate::model::{Account, Attachment, BackendKind, Message, Page, Space, UploadFile, User};
 use crate::secrets;
@@ -436,6 +436,22 @@ impl ChatBackend for MattermostBackend {
             .send_req(self.req(Method::GET, &format!("/files/{}", attachment.id)))
             .await?;
         Ok(resp.bytes().await?.to_vec())
+    }
+
+    async fn avatar(&self, user_id: &str) -> Result<Option<Avatar>> {
+        let resp = self
+            .send_req(self.req(Method::GET, &format!("/users/{user_id}/image")))
+            .await?;
+        let mime = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("image/png")
+            .to_string();
+        Ok(Some(Avatar {
+            data: resp.bytes().await?.to_vec(),
+            mime,
+        }))
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Message>> {

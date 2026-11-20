@@ -1,5 +1,5 @@
 // Typen und Aufrufe des Rust-Kerns (src-tauri/src/app.rs, model.rs).
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 export type BackendKind = "google" | "mattermost";
 export type SpaceKind = "channel" | "direct" | "group";
@@ -118,3 +118,8 @@ export const api = {
   openWindow: (account: string, space: string, title: string) =>
     invoke<void>("open_space_window", { account, space, title }),
 };
+
+/** URL des Profilbilds über das Backend-Schema `avatar://` (siehe app.rs `avatar_protocol`). */
+export function avatarSrc(account: string, userId: string): string {
+  return `${convertFileSrc(account, "avatar")}/${encodeURIComponent(userId)}`;
+}
