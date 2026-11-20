@@ -1,44 +1,108 @@
-//! Ansicht: Seitenleiste, Verlauf, rechte Leiste (Thread/Suche), Einstellungen.
+//! Ansicht: Seitenleiste, Verlauf, rechte Leiste (Thread/Suche), Einstellungen, Hinweise.
+//! Vorbild ist die Tauri-Oberfläche (`src/lib/components/`), Abweichungen in `konzept/drift-native-tauri.md`.
 
 use chatty_core::app::THEMES;
-use chatty_core::model::{Message as Msg, SpaceKind};
+use chatty_core::model::{BackendKind, Message as Msg, Space, SpaceKind};
+use iced::widget::text_editor::{Binding, KeyPress};
 use iced::widget::{
-    Column, button, checkbox, column, container, hover, image, markdown, pick_list, right, row,
-    scrollable, space, text, text_input,
+    Column, bottom_right, button, checkbox, column, container, hover, image, markdown, mouse_area,
+    pick_list, right, row, scrollable, space, stack, text, text_editor, text_input,
 };
-use iced::{Alignment, Element, Length};
+use iced::{Alignment, Element, Length, keyboard, mouse};
 
 use crate::look::Look;
-use crate::text::{initials, size};
-use crate::{COMPOSER, FormField, MESSAGES, Message, QUICK_EMOJI, Rhs, State};
+use crate::prefs::Sort;
+use crate::text::{date, day, initials, size, time};
+use crate::{
+    COMPOSER, DM_MAX_AGE_MS, FormField, MESSAGES, Message, QUICK_EMOJI, Rhs, State, ToastKind,
+};
 
 pub fn view(s: &State) -> Element<'_, Message> {
-    if s.settings.is_some() {
-        return settings(s);
+    let main: Element<'_, Message> = if s.settings.is_some() {
+        settings(s)
+    } else {
+        let mut main = row![sidebar(s), resize_handle(s), center(s)].height(Length::Fill);
+        if let Some(rhs) = &s.rhs {
+            main = main.push(right_panel(s, rhs));
+        }
+        main.into()
+    };
+    if s.toasts.is_empty() {
+        return main;
     }
-    let mut main = row![sidebar(s), center(s)].height(Length::Fill);
-    if let Some(rhs) = &s.rhs {
-        main = main.push(right_panel(s, rhs));
+    stack![main, toasts(s)].into()
+}
+
+// ---------- Seitenleiste ----------
+
+/// Bereiche wie Tauri: Favoriten, Kanäle, Direktnachrichten; Filter, Ausblendung alter DMs, Sortierung.
+fn sections(s: &State) -> [(&'static str, Vec<&Space>); 3] {
+    let f = s.filter.trim().to_lowercase();
+    let now = chrono::Utc::now().timestamp_millis();
+    let visible = |sp: &Space| {
+        if !f.is_empty() {
+            return sp.name.to_lowercase().contains(&f);
+        }
+        sp.kind == SpaceKind::Channel
+            || sp.favorite
+            || sp.unread
+            || Some(&sp.id) == s.space.as_ref()
+            || sp.last_active >= now - DM_MAX_AGE_MS
+    };
+    let mut out = [
+        ("Favoriten", Vec::new()),
+        ("Kanäle", Vec::new()),
+        ("Direktnachrichten", Vec::new()),
+    ];
+    for sp in s.spaces.iter().filter(|sp| visible(sp)) {
+        let i = if sp.favorite {
+            0
+        } else if sp.kind == SpaceKind::Channel {
+            1
+        } else {
+            2
+        };
+        out[i].1.push(sp);
     }
-    main.into()
+    let by_name = |a: &&Space, b: &&Space| a.name.to_lowercase().cmp(&b.name.to_lowercase());
+    for (_, list) in &mut out {
+        match s.prefs.sort {
+            Sort::Recent => {
+                list.sort_by(|a, b| b.last_active.cmp(&a.last_active).then(by_name(a, b)))
+            }
+            Sort::Count => list.sort_by(|a, b| b.msg_count.cmp(&a.msg_count).then(by_name(a, b))),
+            Sort::Name => list.sort_by(by_name),
+        }
+    }
+    out
 }
 
 fn sidebar(s: &State) -> Element<'_, Message> {
     let look = &s.look;
     let mut col = column![].spacing(2).padding(8);
+
+    // Konten mit Erwähnungszähler und Verbindungszustand.
     if let Some(info) = &s.info {
         for a in &info.accounts {
-            let label = format!(
-                "{}{}",
-                a.account.label,
-                if a.online { "" } else { " (getrennt)" }
-            );
+            let total = s.mention_total(&a.account.id);
+            let mut label = a.account.label.clone();
+            if !a.online {
+                label.push_str(" · getrennt");
+            }
+            if total > 0 {
+                label.push_str(&format!(" ({total})"));
+            }
             let active = s.account.as_ref() == Some(&a.account.id);
             col = col.push(
-                button(text(label).font(look.font(true)).color(look.sidebar_text))
-                    .on_press(Message::SelectAccount(a.account.id.clone()))
-                    .style(move |_, _| look.item_style(active))
-                    .width(Length::Fill),
+                button(
+                    text(label)
+                        .font(look.font(true))
+                        .color(look.sidebar_text)
+                        .wrapping(text::Wrapping::None),
+                )
+                .on_press(Message::SelectAccount(a.account.id.clone()))
+                .style(move |_, _| look.item_style(active))
+                .width(Length::Fill),
             );
         }
     }
@@ -52,60 +116,146 @@ fn sidebar(s: &State) -> Element<'_, Message> {
         .style(move |_, _| look.item_style(false))
         .padding([3, 8]),
     );
-    col = col.push(space().height(6));
-    for sp in &s.spaces {
-        let icon = match sp.kind {
-            SpaceKind::Channel => "#",
-            SpaceKind::Direct => "●",
-            SpaceKind::Group => "◆",
-        };
-        let fav = if sp.favorite { " ★" } else { "" };
-        let muted = if sp.muted { " 🔕" } else { "" };
-        let status = sp
-            .status_emoji
-            .as_deref()
-            .filter(|e| !e.starts_with(':'))
-            .map(|e| format!(" {e}"))
-            .unwrap_or_default();
-        let badge = if sp.mention_count > 0 {
-            format!(" ({})", sp.mention_count)
-        } else {
-            String::new()
-        };
-        let bold = sp.unread && !sp.muted || sp.mention_count > 0;
-        let active = s.space.as_ref() == Some(&sp.id);
-        let item = button(
-            text(format!("{icon} {}{status}{fav}{muted}{badge}", sp.name))
-                .font(look.font(bold))
-                .color(look.sidebar_text)
-                .wrapping(text::Wrapping::None),
-        )
-        .on_press(Message::OpenSpace(sp.id.clone()))
-        .style(move |_, _| look.item_style(active))
-        .padding([3, 8])
-        .width(Length::Fill);
-        let flags = right(
-            row![
-                small(look, if sp.favorite { "★" } else { "☆" }).on_press(Message::Flag(
-                    sp.id.clone(),
-                    Some(!sp.favorite),
-                    None
-                )),
-                small(look, if sp.muted { "🔔" } else { "🔕" }).on_press(Message::Flag(
-                    sp.id.clone(),
-                    None,
-                    Some(!sp.muted)
-                )),
-            ]
-            .spacing(2),
-        );
-        col = col.push(hover(item, flags));
+
+    // Filter und Sortierung.
+    let filter_hint = if s.current_kind() == Some(BackendKind::Mattermost) {
+        "Kanäle filtern / suchen"
+    } else {
+        "Kanäle filtern"
+    };
+    col = col.push(
+        row![
+            text_input(filter_hint, &s.filter)
+                .on_input(Message::Filter)
+                .padding(4)
+                .size(13)
+                .width(Length::Fill),
+            pick_list(&Sort::ALL[..], Some(s.prefs.sort), Message::Sort)
+                .text_size(13)
+                .padding(4),
+        ]
+        .spacing(4)
+        .padding([6, 0]),
+    );
+
+    for (title, items) in sections(s) {
+        if items.is_empty() {
+            continue;
+        }
+        col = col.push(section_title(look, title));
+        for sp in items {
+            col = col.push(space_item(s, sp));
+        }
+    }
+    if !s.joinable.is_empty() {
+        col = col.push(section_title(look, "Weitere Kanäle"));
+        for sp in &s.joinable {
+            col = col.push(
+                button(
+                    row![
+                        text(format!("# {}", sp.name))
+                            .color(look.sidebar_text)
+                            .wrapping(text::Wrapping::None)
+                            .width(Length::Fill),
+                        text("Beitreten").size(12).color(look.sidebar_text),
+                    ]
+                    .spacing(6),
+                )
+                .on_press(Message::Join(sp.id.clone()))
+                .style(move |_, _| look.item_style(false))
+                .padding([3, 8])
+                .width(Length::Fill),
+            );
+        }
     }
     container(scrollable(col).height(Length::Fill))
-        .width(260)
+        .width(s.prefs.sidebar_width)
         .height(Length::Fill)
         .style(move |_| container::background(look.sidebar_bg))
         .into()
+}
+
+fn section_title<'a>(look: &'a Look, title: &str) -> Element<'a, Message> {
+    container(
+        text(title.to_uppercase())
+            .size(12)
+            .font(look.font(true))
+            .color(look.sidebar_text),
+    )
+    .padding([6, 8])
+    .into()
+}
+
+fn space_item<'a>(s: &'a State, sp: &'a Space) -> Element<'a, Message> {
+    let look = &s.look;
+    let icon = match sp.kind {
+        SpaceKind::Channel => "#",
+        SpaceKind::Direct => "●",
+        SpaceKind::Group => "◆",
+    };
+    let status = sp
+        .status_emoji
+        .as_deref()
+        .filter(|e| !e.starts_with(':'))
+        .map(|e| format!(" {e}"))
+        .unwrap_or_default();
+    let badge = if sp.mention_count > 0 {
+        format!(" ({})", sp.mention_count)
+    } else {
+        String::new()
+    };
+    let bold = sp.unread && !sp.muted || sp.mention_count > 0;
+    let color = if sp.muted {
+        iced::Color {
+            a: 0.5,
+            ..look.sidebar_text
+        }
+    } else {
+        look.sidebar_text
+    };
+    let active = s.space.as_ref() == Some(&sp.id);
+    let item = button(
+        text(format!("{icon} {}{status}{badge}", sp.name))
+            .font(look.font(bold))
+            .color(color)
+            .wrapping(text::Wrapping::None),
+    )
+    .on_press(Message::OpenSpace(sp.id.clone()))
+    .style(move |_, _| look.item_style(active))
+    .padding([3, 8])
+    .width(Length::Fill);
+    let flags = right(
+        row![
+            small(look, if sp.favorite { "★" } else { "☆" }).on_press(Message::Flag(
+                sp.id.clone(),
+                Some(!sp.favorite),
+                None
+            )),
+            small(look, if sp.muted { "🔕" } else { "🔔" }).on_press(Message::Flag(
+                sp.id.clone(),
+                None,
+                Some(!sp.muted)
+            )),
+        ]
+        .spacing(2),
+    );
+    hover(item, flags)
+}
+
+/// Griff am rechten Rand der Seitenleiste: ziehen ändert die Breite, Doppelklick setzt sie zurück.
+fn resize_handle(s: &State) -> Element<'_, Message> {
+    let look = &s.look;
+    let color = if s.resizing { look.accent } else { look.border };
+    mouse_area(
+        container(space())
+            .width(4)
+            .height(Length::Fill)
+            .style(move |_| container::background(color)),
+    )
+    .on_press(Message::ResizeStart)
+    .on_double_click(Message::ResizeReset)
+    .interaction(mouse::Interaction::ResizingHorizontally)
+    .into()
 }
 
 /// Kleiner Knopf für Aktionen (Seitenleiste, Nachrichten).
@@ -124,15 +274,17 @@ fn small<'a>(look: &'a Look, label: &'a str) -> button::Button<'a, Message> {
         })
 }
 
+// ---------- Kanal ----------
+
 fn center(s: &State) -> Element<'_, Message> {
     let look = &s.look;
     let Some(space) = s.current_space() else {
         let hint = if s.info.as_ref().is_some_and(|i| i.accounts.is_empty()) {
-            "Noch kein Konto – links „Konten und Einstellungen“."
+            "Zuerst ein Konto hinzufügen."
         } else {
-            "Kanal links auswählen."
+            "Kanal oder Direktnachricht links auswählen."
         };
-        return container(text(hint).font(look.font(false)))
+        return container(text(hint).font(look.font(false)).color(look.muted))
             .center(Length::Fill)
             .into();
     };
@@ -157,16 +309,21 @@ fn center(s: &State) -> Element<'_, Message> {
     .style(move |_| container::background(look.header_bg).color(look.header_text));
 
     let mut list = column![].spacing(4).padding([8, 16]);
-    if s.cursor.is_none() && !s.loading && !s.messages.is_empty() {
-        list = list.push(text(format!("Anfang von {}", space.name)).color(look.muted));
-    } else if s.loading {
+    if s.loading && s.messages.is_empty() {
         list = list.push(text("Lade …").color(look.muted));
+    } else if s.cursor.is_none() && !s.loading && !s.messages.is_empty() {
+        list = list.push(text(format!("Anfang von {}", space.name)).color(look.muted));
     }
     let mut prev: Option<&Msg> = None;
     for m in &s.messages {
-        // Folgenachricht desselben Absenders innerhalb von 5 Minuten: ohne Kopf und Bild.
-        let compact =
-            prev.is_some_and(|p| p.sender.id == m.sender.id && m.created - p.created < 5 * 60_000);
+        let new_day = prev.is_none_or(|p| date(p.created) != date(m.created));
+        if new_day {
+            list = list.push(day_separator(look, m.created));
+        }
+        // Folgenachricht desselben Absenders, gleicher Tag, < 5 min: ohne Kopf und Bild (wie Tauri).
+        let compact = !new_day
+            && prev
+                .is_some_and(|p| p.sender.id == m.sender.id && m.created - p.created < 5 * 60_000);
         list = list.push(message(s, m, false, compact));
         prev = Some(m);
     }
@@ -176,39 +333,81 @@ fn center(s: &State) -> Element<'_, Message> {
         .on_scroll(Message::Scrolled)
         .height(Length::Fill)
         .width(Length::Fill);
+    let messages: Element<'_, Message> = if s.show_down {
+        let down = button(text("↓").size(18).color(iced::Color::WHITE))
+            .on_press(Message::ToBottom)
+            .padding([4, 12])
+            .style(move |_, _| button::Style {
+                background: Some(look.accent.into()),
+                text_color: iced::Color::WHITE,
+                border: iced::Border {
+                    radius: 18.0.into(),
+                    ..iced::Border::default()
+                },
+                ..button::Style::default()
+            });
+        stack![messages, bottom_right(container(down).padding(16))].into()
+    } else {
+        messages.into()
+    };
 
     let mut col = column![header];
     if let Some(r) = &s.update_available {
         col = col.push(
             container(
                 row![
-                    text(format!("Neue Version {} verfügbar.", r.version)).width(Length::Fill),
-                    button(text("Installieren und neu starten")).on_press(Message::InstallUpdate),
+                    text(format!("Version {} verfügbar.", r.version)).width(Length::Fill),
+                    button(text("Installieren")).on_press(Message::InstallUpdate),
                 ]
                 .align_y(Alignment::Center),
             )
             .padding([4, 16]),
         );
     }
-    col = col.push(messages);
-    if let Some(e) = &s.error {
-        col = col.push(container(text(e.clone()).color(look.error)).padding([4, 16]));
-    }
-    col.push(composer(s, &space.name)).into()
+    col.push(messages).push(composer(s, &space.name)).into()
 }
 
+fn day_separator(look: &Look, ms: i64) -> Element<'_, Message> {
+    let line = || {
+        container(space())
+            .height(1)
+            .width(Length::Fill)
+            .style(move |_| container::background(look.border))
+    };
+    row![
+        line(),
+        text(day(ms))
+            .size(12)
+            .font(look.font(true))
+            .color(look.text),
+        line()
+    ]
+    .spacing(12)
+    .align_y(Alignment::Center)
+    .padding([8, 0])
+    .into()
+}
+
+/// Mehrzeilige Eingabe wie Tauri: Enter sendet, Shift+Enter neue Zeile, ↑ im leeren Feld bearbeitet die
+/// letzte eigene Nachricht, Esc bricht das Bearbeiten ab.
 fn composer<'a>(s: &'a State, space: &str) -> Element<'a, Message> {
     let look = &s.look;
     let mut col = column![].spacing(4);
     if !s.files.is_empty() {
-        let mut chips = row![].spacing(6);
+        let mut chips = row![].spacing(10);
         for (i, f) in s.files.iter().enumerate() {
             let name = f
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            chips = chips.push(small(look, "×").on_press(Message::RemoveFile(i)));
-            chips = chips.push(text(name).size(13));
+            chips = chips.push(
+                row![
+                    text(name).size(13),
+                    small(look, "×").on_press(Message::RemoveFile(i))
+                ]
+                .spacing(4)
+                .align_y(Alignment::Center),
+            );
         }
         col = col.push(chips);
     }
@@ -219,21 +418,37 @@ fn composer<'a>(s: &'a State, space: &str) -> Element<'a, Message> {
                 .color(look.muted),
         );
     }
-    let mut input = text_input(&format!("Nachricht an {space}"), &s.draft)
+    let empty = s.composer.text().trim().is_empty();
+    let mut editor = text_editor(&s.composer)
         .id(COMPOSER)
+        .placeholder(format!("Nachricht an {space}"))
         .font(look.font(false))
-        .padding(10);
+        .padding(10)
+        .max_height(240.0);
     if s.online() {
-        input = input.on_input(Message::Draft).on_submit(Message::Send);
+        editor = editor
+            .on_action(Message::Compose)
+            .key_binding(move |kp| chat_keys(kp, empty, Message::Send, Some(Message::EditLast)));
     }
     let prompt = text(look.prompt).font(look.font(false));
+    col = col.push(row![prompt, editor].spacing(6).align_y(Alignment::Center));
+    let can_send = s.online() && !s.sending && (!empty || !s.files.is_empty());
     col = col.push(
         row![
-            prompt,
-            input,
             small(look, "📎").on_press(Message::PickFiles),
+            text("Enter senden · Shift+Enter neue Zeile · ↑ letzte bearbeiten")
+                .size(11)
+                .color(look.muted)
+                .width(Length::Fill),
+            button(text(if s.editing.is_some() {
+                "Speichern"
+            } else {
+                "Senden"
+            }))
+            .on_press_maybe(can_send.then_some(Message::Send))
+            .padding([4, 12]),
         ]
-        .spacing(6)
+        .spacing(8)
         .align_y(Alignment::Center),
     );
     container(col)
@@ -242,12 +457,28 @@ fn composer<'a>(s: &'a State, space: &str) -> Element<'a, Message> {
         .into()
 }
 
+/// Tastenbelegung der Eingabefelder.
+fn chat_keys(
+    kp: KeyPress,
+    empty: bool,
+    send: Message,
+    edit_last: Option<Message>,
+) -> Option<Binding<Message>> {
+    match &kp.key {
+        keyboard::Key::Named(keyboard::key::Named::Enter) if !kp.modifiers.shift() => {
+            Some(Binding::Custom(send))
+        }
+        keyboard::Key::Named(keyboard::key::Named::ArrowUp) if empty && edit_last.is_some() => {
+            edit_last.map(Binding::Custom)
+        }
+        _ => Binding::from_key_press(kp),
+    }
+}
+
 /// Eine Nachricht: Profilbild (je Optik), Kopf, Text, Anhänge, Reaktionen, Antworten; Aktionen beim Überfahren.
 fn message<'a>(s: &'a State, m: &'a Msg, in_thread: bool, compact: bool) -> Element<'a, Message> {
     let look = &s.look;
-    let time = chrono::DateTime::from_timestamp_millis(m.created)
-        .map(|t| t.with_timezone(&chrono::Local).format("%H:%M").to_string())
-        .unwrap_or_default();
+    let time = time(m.created);
     let body: Element<'a, Message> = match s.md.get(&m.id) {
         Some(items) => markdown::view(items, look.markdown()).map(Message::Link),
         None => text(&m.text).font(look.font(false)).into(),
@@ -255,11 +486,6 @@ fn message<'a>(s: &'a State, m: &'a Msg, in_thread: bool, compact: bool) -> Elem
     let body: Element<'a, Message> = if m.mentions_me && !m.mine {
         container(body)
             .style(move |_| container::Style {
-                border: iced::Border {
-                    color: look.mention,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
                 background: Some(iced::Background::Color(iced::Color {
                     a: 0.12,
                     ..look.mention
@@ -398,14 +624,30 @@ fn message<'a>(s: &'a State, m: &'a Msg, in_thread: bool, compact: bool) -> Elem
     if !in_thread && m.thread_id.is_some() {
         actions = actions.push(small(look, "↩").on_press(Message::OpenThread(m.clone())));
     }
+    let confirming = s.confirm_delete.as_ref() == Some(&m.id);
     if m.mine {
         actions = actions.push(small(look, "✎").on_press(Message::Edit(m.clone())));
-        actions = actions.push(small(look, "🗑").on_press(Message::Delete(m.clone())));
+        // Löschen mit Rückfrage (wie Tauri `confirm`): erster Klick fragt, zweiter löscht.
+        actions = if confirming {
+            actions
+                .push(small(look, "Wirklich löschen?").on_press(Message::Delete(m.clone())))
+                .push(small(look, "Abbrechen").on_press(Message::ConfirmDelete(None)))
+        } else {
+            actions.push(small(look, "🗑").on_press(Message::ConfirmDelete(Some(m.id.clone()))))
+        };
     }
-    hover(
-        container(line).padding([2, 0]).width(Length::Fill),
-        right(actions),
-    )
+    let mut top = row![].align_y(Alignment::Start);
+    if compact && look.avatars {
+        // Uhrzeit beim Überfahren, wie Tauri `hover-time`.
+        top = top.push(text(time).size(10).color(look.muted));
+    }
+    top = top.push(space().width(Length::Fill)).push(actions);
+    let base = container(line).padding([2, 0]).width(Length::Fill);
+    // Offene Rückfrage bleibt auch ohne Überfahren sichtbar.
+    if confirming {
+        return stack![base, top].into();
+    }
+    hover(base, top)
 }
 
 fn avatar<'a>(s: &'a State, m: &'a Msg) -> Element<'a, Message> {
@@ -434,27 +676,31 @@ fn avatar<'a>(s: &'a State, m: &'a Msg) -> Element<'a, Message> {
     }
 }
 
+// ---------- rechte Leiste ----------
+
 fn right_panel<'a>(s: &'a State, rhs: &'a Rhs) -> Element<'a, Message> {
     let look = &s.look;
     let (title, body): (String, Element<'a, Message>) = match rhs {
-        Rhs::Thread {
-            root,
-            replies,
-            draft,
-        } => {
+        Rhs::Thread { root, replies } => {
             let mut list = column![message(s, root, true, false)].spacing(4).padding(8);
             for r in replies {
                 list = list.push(message(s, r, true, false));
             }
-            let input = text_input("Antworten …", draft)
-                .on_input(Message::ThreadDraft)
-                .on_submit(Message::ThreadSend)
-                .padding(8);
+            let empty = s.thread_composer.text().trim().is_empty();
+            let mut editor = text_editor(&s.thread_composer)
+                .placeholder("Antworten …")
+                .padding(8)
+                .max_height(160.0);
+            if s.online() {
+                editor = editor
+                    .on_action(Message::ThreadCompose)
+                    .key_binding(move |kp| chat_keys(kp, empty, Message::ThreadSend, None));
+            }
             (
                 "Thread".into(),
                 column![
                     scrollable(list).height(Length::Fill),
-                    container(input).padding(8)
+                    container(editor).padding(8)
                 ]
                 .into(),
             )
@@ -467,6 +713,11 @@ fn right_panel<'a>(s: &'a State, rhs: &'a Rhs) -> Element<'a, Message> {
                     list = list.push(text("Keine Treffer.").color(look.muted))
                 }
                 Some(r) => {
+                    list = list.push(
+                        text(format!("{} Treffer", r.len()))
+                            .size(12)
+                            .color(look.muted),
+                    );
                     for m in r {
                         let where_ = s
                             .spaces
@@ -477,9 +728,12 @@ fn right_panel<'a>(s: &'a State, rhs: &'a Rhs) -> Element<'a, Message> {
                         list = list.push(
                             button(
                                 column![
-                                    text(format!("{where_} · {}", m.sender.name))
+                                    text(format!("{where_} · {}", day(m.created)))
                                         .size(12)
                                         .color(look.muted),
+                                    text(m.sender.name.clone())
+                                        .font(look.font(true))
+                                        .color(look.text),
                                     text(m.text.chars().take(200).collect::<String>())
                                         .color(look.text),
                                 ]
@@ -526,6 +780,57 @@ fn right_panel<'a>(s: &'a State, rhs: &'a Rhs) -> Element<'a, Message> {
         .into()
 }
 
+// ---------- Hinweise ----------
+
+fn toasts(s: &State) -> Element<'_, Message> {
+    let look = &s.look;
+    let mut col = column![].spacing(6).width(360);
+    for t in &s.toasts {
+        let accent = match t.kind {
+            ToastKind::Error => look.error,
+            ToastKind::Message => look.mention,
+            ToastKind::Info => look.accent,
+        };
+        let mut r = row![
+            text(t.text.clone())
+                .size(13)
+                .color(iced::Color::WHITE)
+                .width(Length::Fill)
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+        if let Some((label, action)) = &t.action {
+            r = r.push(
+                button(text(label.clone()).size(13).color(iced::Color::WHITE))
+                    .on_press(Message::ToastAction(t.id, Box::new(action.clone())))
+                    .style(button::text),
+            );
+        }
+        r = r.push(
+            button(text("✕").size(13).color(iced::Color::WHITE))
+                .on_press(Message::CloseToast(t.id))
+                .style(button::text),
+        );
+        col = col.push(
+            container(r)
+                .padding([8, 12])
+                .width(Length::Fill)
+                .style(move |_| container::Style {
+                    background: Some(iced::color!(0x1f1f1f).into()),
+                    border: iced::Border {
+                        color: accent,
+                        width: 2.0,
+                        radius: 6.0.into(),
+                    },
+                    ..container::Style::default()
+                }),
+        );
+    }
+    bottom_right(container(col).padding(16)).into()
+}
+
+// ---------- Einstellungen ----------
+
 fn settings(s: &State) -> Element<'_, Message> {
     let look = &s.look;
     let Some(f) = &s.settings else {
@@ -561,19 +866,37 @@ fn settings(s: &State) -> Element<'_, Message> {
         }
         for a in &info.accounts {
             let kind = match a.account.kind {
-                chatty_core::model::BackendKind::Google => "Google Chat",
-                chatty_core::model::BackendKind::Mattermost => "Mattermost",
+                BackendKind::Google => "Google Chat",
+                BackendKind::Mattermost => "Mattermost",
+            };
+            let id = a.account.id.clone();
+            let actions: Element<'_, Message> = if f.confirm_remove.as_ref() == Some(&id) {
+                row![
+                    text("Token und Cache löschen?").color(look.error),
+                    button(text("Entfernen")).on_press(Message::RemoveAccount(id.clone())),
+                    button(text("Abbrechen")).on_press(Message::ConfirmRemove(None)),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center)
+                .into()
+            } else {
+                row![
+                    button(text("Neu anmelden"))
+                        .on_press_maybe((!f.busy).then(|| Message::Relogin(id.clone()))),
+                    button(text("Entfernen")).on_press(Message::ConfirmRemove(Some(id.clone()))),
+                ]
+                .spacing(6)
+                .into()
             };
             col = col.push(
                 row![
                     text(format!(
-                        "{} ({kind}{})",
-                        a.account.label,
-                        if a.online { "" } else { ", getrennt" }
+                        "{} {} ({kind})",
+                        if a.online { "●" } else { "○" },
+                        a.account.label
                     ))
                     .width(Length::Fill),
-                    button(text("Entfernen"))
-                        .on_press(Message::RemoveAccount(a.account.id.clone())),
+                    actions,
                 ]
                 .align_y(Alignment::Center),
             );
@@ -581,8 +904,18 @@ fn settings(s: &State) -> Element<'_, Message> {
     }
 
     // Mattermost
-    let can_add = !f.busy && !f.server.is_empty() && !f.login.is_empty() && !f.password.is_empty();
-    col = col.push(text("Mattermost-Konto hinzufügen").font(look.font(true)));
+    let can_add = !f.busy
+        && f.server.len() > "https://".len()
+        && !f.login.is_empty()
+        && !f.password.is_empty();
+    col = col.push(
+        text(if f.relogin.is_some() {
+            "Mattermost-Konto neu anmelden"
+        } else {
+            "Mattermost-Konto hinzufügen"
+        })
+        .font(look.font(true)),
+    );
     col = col.push(field(
         "Server-URL (https://…)",
         &f.server,
@@ -625,7 +958,7 @@ fn settings(s: &State) -> Element<'_, Message> {
             button(text("Client speichern"))
                 .on_press_maybe((!f.busy).then_some(Message::SaveGoogleClient)),
             button(text("Mit Google anmelden"))
-                .on_press_maybe((configured && !f.busy).then_some(Message::AddGoogle)),
+                .on_press_maybe((configured && !f.busy).then_some(Message::AddGoogle(None))),
         ]
         .spacing(8),
     );
@@ -646,6 +979,11 @@ fn settings(s: &State) -> Element<'_, Message> {
             .label("Desktop-Benachrichtigungen bei Direktnachrichten und Erwähnungen")
             .on_toggle(Message::Notifications),
     );
+    if f.busy {
+        col = col.push(
+            text("Bitte warten … (Google: Anmeldung im Browser abschließen)").color(look.muted),
+        );
+    }
     if let Some(m) = &f.message {
         col = col.push(text(m.clone()).color(look.muted));
     }

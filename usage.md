@@ -142,9 +142,9 @@ Formatierung: `**fett**` bzw. `*fett*`, `_kursiv_`, `~durchgestrichen~`, `` `Cod
 - Mattermost: Emoji-Reaktionen werden für die gängigen Emoji in Unicode übersetzt, andere als `:name:`
   angezeigt.
 - Slack als Backend gibt es noch nicht (nur die Optik).
-- `chatty-native`: kein Ziehen in der Seitenleiste (Favorit/Stumm per Knopf beim Überfahren), keine
-  abgelösten Fenster, keine Suche nach fremden Kanälen; eigene Server-Emojis nur in Reaktionen als Bild,
-  im Text als `:name:`.
+- `chatty-native`: Favoriten nicht per Ziehen (Favorit/Stumm per Knopf beim Überfahren), keine abgelösten
+  Fenster; eigene Server-Emojis nur in Reaktionen als Bild, im Text als `:name:`
+  ([Abgleich](konzept/drift-native-tauri.md)).
 
 ## Konto entfernen
 

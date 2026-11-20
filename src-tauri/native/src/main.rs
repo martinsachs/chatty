@@ -1,4 +1,5 @@
 //! chatty-native: Oberfläche mit iced statt WebView (ADR 08), auf demselben Kern wie die Tauri-Variante.
+//! Abweichungen zur Tauri-Oberfläche: `konzept/drift-native-tauri.md`.
 //!
 //! `chatty-native --open <space-id>` öffnet den Space nach dem Start (Messung, Screenshots).
 //! Mit `CHATTY_SHOT=<datei.ppm>` bleibt das Fenster unsichtbar (kein Fokus, keine Eingaben), speichert nach dem
@@ -8,6 +9,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod look;
+mod prefs;
 mod text;
 mod updater;
 mod view;
@@ -15,14 +17,18 @@ mod view;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use chatty_core::app::Events;
-use chatty_core::model::{Attachment, BackendEvent, Message as Msg, Page, Space};
+use chatty_core::model::{
+    Attachment, BackendEvent, BackendKind, Message as Msg, Page, Space, SpaceKind,
+};
 use chatty_core::{App, AppInfo};
-use iced::widget::{Id, image, markdown, operation, scrollable};
-use iced::{Subscription, Task, keyboard, window};
+use iced::widget::{Id, image, markdown, operation, scrollable, text_editor};
+use iced::{Subscription, Task, event, keyboard, mouse, window};
 
 use crate::look::Look;
+use crate::prefs::{Prefs, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, Sort};
 
 /// Ereignis-Empfänger des Kerns; die Subscription holt ihn einmal ab.
 static EVENTS: OnceLock<Mutex<Option<Events>>> = OnceLock::new();
@@ -31,8 +37,16 @@ const MESSAGES: Id = Id::new("messages");
 const COMPOSER: Id = Id::new("composer");
 /// Abstand zum oberen Rand, ab dem ältere Nachrichten geladen werden.
 const LOAD_OLDER_PX: f32 = 80.0;
-/// Schnellauswahl für Reaktionen.
-pub const QUICK_EMOJI: [&str; 6] = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
+/// Ab diesem Abstand zum Ende erscheint der Knopf „↓“ (wie Tauri).
+const SHOW_DOWN_PX: f32 = 300.0;
+/// Höchstens so viele Nachrichten bleiben geladen, wenn man wieder unten ist (ADR 05, nur Mattermost).
+const WINDOW: usize = 300;
+/// Schnellauswahl für Reaktionen (wie `QUICK_EMOJI` in `src/lib/format.ts`).
+pub const QUICK_EMOJI: [&str; 12] = [
+    "👍", "❤️", "😄", "🎉", "👀", "✅", "🙏", "🚀", "😂", "🤔", "👎", "🔥",
+];
+/// Direktnachrichten ohne Nachricht seit so vielen Tagen ausblenden (wie Tauri).
+pub const DM_MAX_AGE_MS: i64 = 90 * 86_400_000;
 
 fn main() -> iced::Result {
     chatty_core::backend::init_tls();
@@ -46,19 +60,19 @@ fn main() -> iced::Result {
         .theme(|s: &State| s.look.theme())
         .window(window::Settings {
             size: (1100.0, 700.0).into(),
+            min_size: Some((720.0, 480.0).into()),
             visible: !shot,
             ..window::Settings::default()
         })
         .run()
 }
 
-/// Rechte Leiste (eine Instanz; Größenunterschied der Varianten egal).
+/// Rechte Leiste.
 #[allow(clippy::large_enum_variant)]
 pub enum Rhs {
     Thread {
         root: Msg,
         replies: Vec<Msg>,
-        draft: String,
     },
     Search {
         query: String,
@@ -69,6 +83,8 @@ pub enum Rhs {
 /// Formular „Konten und Einstellungen“.
 #[derive(Default)]
 pub struct Form {
+    /// Gesetzt: vorhandenes Mattermost-Konto neu anmelden.
+    pub relogin: Option<String>,
     pub server: String,
     pub login: String,
     pub password: String,
@@ -77,31 +93,62 @@ pub struct Form {
     pub client_secret: String,
     pub busy: bool,
     pub message: Option<String>,
+    /// Konto, dessen Entfernen gerade bestätigt werden soll.
+    pub confirm_remove: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ToastKind {
+    Info,
+    Error,
+    Message,
+}
+
+pub struct Toast {
+    pub id: u64,
+    pub text: String,
+    pub kind: ToastKind,
+    pub action: Option<(String, Message)>,
 }
 
 pub struct State {
     pub app: Arc<App>,
     pub info: Option<AppInfo>,
     pub look: Look,
+    pub prefs: Prefs,
+    /// Seitenleiste wird gerade per Maus verbreitert.
+    pub resizing: bool,
     pub account: Option<String>,
     pub spaces: Vec<Space>,
+    /// Erwähnungen je Konto und Space (Zähler an den Konten in der Seitenleiste).
+    pub mentions: HashMap<String, HashMap<String, u32>>,
+    pub filter: String,
+    filter_seq: u64,
+    /// Beitretbare Kanäle passend zum Filter (nur Mattermost).
+    pub joinable: Vec<Space>,
     pub space: Option<String>,
     pub messages: Vec<Msg>,
     pub cursor: Option<String>,
     pub loading: bool,
     /// Zählt Ladevorgänge; Antworten zu älteren Ständen werden verworfen.
     seq: u64,
-    pub draft: String,
+    pub composer: text_editor::Content,
+    pub thread_composer: text_editor::Content,
     /// Nachricht, die gerade im Eingabefeld bearbeitet wird.
     pub editing: Option<Msg>,
     /// Gewählte Anhänge für die nächste Nachricht.
     pub files: Vec<PathBuf>,
-    pub error: Option<String>,
+    pub sending: bool,
+    pub show_down: bool,
     pub rhs: Option<Rhs>,
     pub search: String,
     /// Reaktions-Schnellauswahl offen an dieser Nachricht.
     pub picker: Option<String>,
+    /// Nachricht, deren Löschen gerade bestätigt werden soll.
+    pub confirm_delete: Option<String>,
     pub settings: Option<Form>,
+    pub toasts: Vec<Toast>,
+    toast_seq: u64,
     /// Geparster Text je Nachrichten-ID.
     pub md: HashMap<String, Vec<markdown::Item>>,
     /// Profilbilder und eigene Emojis je Pfad (`konto/nutzer`, `konto/emoji/name`); `None` = nicht vorhanden.
@@ -122,17 +169,22 @@ pub enum Message {
     Emojis(String, Vec<String>),
     SelectAccount(String),
     OpenSpace(String),
+    /// Hinweis „Öffnen“: Konto wechseln und Space öffnen.
+    OpenIn(String, String),
     Page {
         seq: u64,
         older: bool,
         result: Result<Page, String>,
     },
     Scrolled(scrollable::Viewport),
-    Draft(String),
+    ToBottom,
+    Compose(text_editor::Action),
     Send,
     Sent(Result<Msg, String>),
+    EditLast,
     Edit(Msg),
     Edited(Result<Msg, String>),
+    ConfirmDelete(Option<String>),
     Delete(Msg),
     Deleted(String, Result<(), String>),
     Escape,
@@ -140,13 +192,13 @@ pub enum Message {
     Picked(Vec<PathBuf>),
     RemoveFile(usize),
     Save(Attachment),
-    Saved(Result<bool, String>),
+    Saved(String, Result<bool, String>),
     Picker(Option<String>),
     React(Msg, String),
-    Reacted(Result<(), String>),
+    Done(Result<(), String>),
     OpenThread(Msg),
     Thread(String, Result<Vec<Msg>, String>),
-    ThreadDraft(String),
+    ThreadCompose(text_editor::Action),
     ThreadSend,
     ThreadSent(Result<Msg, String>),
     CloseRhs,
@@ -154,7 +206,18 @@ pub enum Message {
     Search,
     Found(String, Result<Vec<Msg>, String>),
     Flag(String, Option<bool>, Option<bool>),
-    Flagged(Result<(), String>),
+    /// Favorit/Stumm fehlgeschlagen: alter Zustand (favorite, muted) und Fehler.
+    FlagFailed(String, bool, bool, String),
+    Filter(String),
+    Browse(u64),
+    Joinable(u64, Vec<Space>),
+    Join(String),
+    Joined(Result<Space, String>),
+    Sort(Sort),
+    ResizeStart,
+    ResizeMove(f32),
+    ResizeEnd,
+    ResizeReset,
     Image(String, Option<image::Handle>),
     Link(markdown::Uri),
     Settings(bool),
@@ -162,10 +225,14 @@ pub enum Message {
     Theme(&'static str),
     Notifications(bool),
     AddMattermost,
-    AddGoogle,
+    AddGoogle(Option<String>),
+    Relogin(String),
     SaveGoogleClient,
+    ConfirmRemove(Option<String>),
     RemoveAccount(String),
     Added(Result<String, String>),
+    CloseToast(u64),
+    ToastAction(u64, Box<Message>),
     Focus(bool),
     UpdateFound(Option<updater::Release>),
     InstallUpdate,
@@ -200,21 +267,32 @@ fn boot() -> (State, Task<Message>) {
         app: app.clone(),
         info: None,
         look,
+        prefs: prefs::load(),
+        resizing: false,
         account: None,
         spaces: Vec::new(),
+        mentions: HashMap::new(),
+        filter: String::new(),
+        filter_seq: 0,
+        joinable: Vec::new(),
         space: None,
         messages: Vec::new(),
         cursor: None,
         loading: false,
         seq: 0,
-        draft: String::new(),
+        composer: text_editor::Content::new(),
+        thread_composer: text_editor::Content::new(),
         editing: None,
         files: Vec::new(),
-        error: None,
+        sending: false,
+        show_down: false,
         rhs: None,
         search: String::new(),
         picker: None,
+        confirm_delete: None,
         settings: None,
+        toasts: Vec::new(),
+        toast_seq: 0,
         md: HashMap::new(),
         images: HashMap::new(),
         custom_emojis: HashMap::new(),
@@ -245,6 +323,14 @@ impl State {
             .find(|s| Some(&s.id) == self.space.as_ref())
     }
 
+    pub fn current_kind(&self) -> Option<BackendKind> {
+        let info = self.info.as_ref()?;
+        info.accounts
+            .iter()
+            .find(|a| Some(&a.account.id) == self.account.as_ref())
+            .map(|a| a.account.kind)
+    }
+
     pub fn online(&self) -> bool {
         self.info
             .as_ref()
@@ -254,6 +340,14 @@ impl State {
                     .find(|a| Some(&a.account.id) == self.account.as_ref())
             })
             .is_some_and(|a| a.online)
+    }
+
+    /// Summe der Erwähnungen eines Kontos.
+    pub fn mention_total(&self, account: &str) -> u32 {
+        self.mentions
+            .get(account)
+            .map(|m| m.values().sum())
+            .unwrap_or(0)
     }
 
     /// Bild-Pfad für ":name:", wenn es ein eigenes Server-Emoji des Kontos ist.
@@ -268,6 +362,44 @@ impl State {
 
     pub fn image(&self, path: &str) -> Option<&image::Handle> {
         self.images.get(path)?.as_ref()
+    }
+
+    fn set_mentions(&mut self, account: &str, spaces: &[Space]) {
+        self.mentions.insert(
+            account.to_string(),
+            spaces
+                .iter()
+                .map(|s| (s.id.clone(), s.mention_count))
+                .collect(),
+        );
+    }
+
+    /// In-App-Hinweis; verschwindet nach 5 s (Fehler 8 s).
+    fn toast(
+        &mut self,
+        text: impl Into<String>,
+        kind: ToastKind,
+        action: Option<(String, Message)>,
+    ) -> Task<Message> {
+        self.toast_seq += 1;
+        let id = self.toast_seq;
+        self.toasts.push(Toast {
+            id,
+            text: text.into(),
+            kind,
+            action,
+        });
+        if self.toasts.len() > 5 {
+            self.toasts.remove(0);
+        }
+        let secs = if kind == ToastKind::Error { 8 } else { 5 };
+        Task::perform(tokio::time::sleep(Duration::from_secs(secs)), move |_| {
+            Message::CloseToast(id)
+        })
+    }
+
+    fn error(&mut self, e: impl Into<String>) -> Task<Message> {
+        self.toast(e, ToastKind::Error, None)
     }
 
     fn load_spaces(&self, account: String) -> Task<Message> {
@@ -354,21 +486,28 @@ impl State {
         )
     }
 
-    fn upsert(&mut self, m: Msg) -> Task<Message> {
+    /// `created`: neu eingegangen (Antwortzähler nur dann erhöhen, wie Tauri).
+    fn upsert(&mut self, m: Msg, created: bool) -> Task<Message> {
         if Some(&m.space_id) != self.space.as_ref() {
             return Task::none();
         }
         let task = self.prepare(std::slice::from_ref(&m));
-        if m.is_reply {
-            if let Some(Rhs::Thread { root, replies, .. }) = &mut self.rhs
-                && root.thread_id == m.thread_id
-            {
+        if let Some(Rhs::Thread { root, replies }) = &mut self.rhs
+            && m.thread_id.is_some()
+            && root.thread_id == m.thread_id
+        {
+            if root.id == m.id {
+                *root = m.clone();
+            } else if m.is_reply {
                 match replies.iter_mut().find(|x| x.id == m.id) {
                     Some(x) => *x = m.clone(),
                     None => replies.push(m.clone()),
                 }
             }
-            if self.counted_replies.insert(m.id.clone())
+        }
+        if m.is_reply {
+            if created
+                && self.counted_replies.insert(m.id.clone())
                 && let Some(root) = self
                     .messages
                     .iter_mut()
@@ -386,6 +525,90 @@ impl State {
             }
         }
         task
+    }
+
+    /// ADR 05: wieder unten angekommen, ältere über `WINDOW` verwerfen (nur Mattermost: Cursor = Post-ID).
+    fn trim_to_window(&mut self) {
+        if self.messages.len() <= WINDOW
+            || self.loading
+            || self.current_kind() != Some(BackendKind::Mattermost)
+        {
+            return;
+        }
+        let drop = self.messages.len() - WINDOW;
+        self.messages.drain(..drop);
+        self.cursor = self.messages.first().map(|m| m.id.clone());
+    }
+
+    /// Neue Nachricht in einem nicht sichtbaren Space: ungelesen, Zähler und Hinweis (wie Tauri `markUnread`).
+    fn mark_unread(&mut self, account: &str, m: &Msg) -> Task<Message> {
+        let current = self.account.as_deref() == Some(account);
+        let known = if current {
+            self.spaces
+                .iter_mut()
+                .find(|s| s.id == m.space_id)
+                .map(|s| {
+                    s.unread = true;
+                    s.last_active = s.last_active.max(m.created);
+                    (s.name.clone(), s.kind, s.muted)
+                })
+        } else {
+            self.app
+                .cached_spaces(account)
+                .ok()
+                .and_then(|l| l.into_iter().find(|s| s.id == m.space_id))
+                .map(|s| (s.name, s.kind, s.muted))
+        };
+        let Some((name, kind, muted)) = known else {
+            return Task::none();
+        };
+        if !(m.mentions_me || kind != SpaceKind::Channel && !muted) {
+            return Task::none();
+        }
+        if current && let Some(s) = self.spaces.iter_mut().find(|s| s.id == m.space_id) {
+            s.mention_count += 1;
+        }
+        *self
+            .mentions
+            .entry(account.to_string())
+            .or_default()
+            .entry(m.space_id.clone())
+            .or_default() += 1;
+        let where_ = if kind == SpaceKind::Channel {
+            format!(" in {name}")
+        } else {
+            String::new()
+        };
+        let text: String = m.text.chars().take(120).collect();
+        self.toast(
+            format!("{}{where_}: {text}", m.sender.name),
+            ToastKind::Message,
+            Some((
+                "Öffnen".into(),
+                Message::OpenIn(account.to_string(), m.space_id.clone()),
+            )),
+        )
+    }
+
+    fn mark_read_current(&mut self) -> Task<Message> {
+        let (Some(account), Some(space)) = (self.account.clone(), self.space.clone()) else {
+            return Task::none();
+        };
+        let Some(s) = self.spaces.iter_mut().find(|s| s.id == space) else {
+            return Task::none();
+        };
+        if !s.unread && s.mention_count == 0 {
+            return Task::none();
+        }
+        s.unread = false;
+        s.mention_count = 0;
+        if let Some(m) = self.mentions.get_mut(&account) {
+            m.insert(space.clone(), 0);
+        }
+        self.call(
+            move |app| async move { app.mark_read(&account, &space).await },
+            |_| Message::Ignore,
+        )
     }
 
     fn account_space(&self) -> Option<(String, String)> {
@@ -409,12 +632,23 @@ impl State {
 fn update(s: &mut State, message: Message) -> Task<Message> {
     match message {
         Message::Info(info) => {
+            for a in &info.accounts {
+                if !s.mentions.contains_key(&a.account.id) {
+                    let cached = s.app.cached_spaces(&a.account.id).unwrap_or_default();
+                    s.set_mentions(&a.account.id, &cached);
+                }
+            }
             let first = info.accounts.first().map(|a| a.account.id.clone());
             let known = s
                 .account
                 .as_ref()
                 .is_some_and(|a| info.accounts.iter().any(|x| &x.account.id == a));
+            let empty = info.accounts.is_empty();
             s.info = Some(info);
+            // Wie Tauri: ohne Konto gleich die Einstellungen öffnen.
+            if empty && s.settings.is_none() && std::env::var_os("CHATTY_SHOT").is_none() {
+                return update(s, Message::Settings(true));
+            }
             match (known, first) {
                 (false, Some(id)) => update(s, Message::SelectAccount(id)),
                 (false, None) => {
@@ -428,6 +662,9 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             }
         }
         Message::SelectAccount(id) => {
+            if s.account.as_ref() == Some(&id) {
+                return Task::none();
+            }
             if let Some((a, _)) = s.account_space() {
                 let app = s.app.clone();
                 tokio::spawn(async move { app.set_active(&a, None).await });
@@ -436,28 +673,31 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             s.space = None;
             s.messages.clear();
             s.rhs = None;
+            s.filter.clear();
+            s.joinable.clear();
             s.spaces = s.app.cached_spaces(&id).unwrap_or_default();
-            sort_spaces(&mut s.spaces);
             s.load_spaces(id)
         }
         Message::Spaces(account, result) => {
-            match result {
-                Ok(mut spaces) if s.account.as_ref() == Some(&account) => {
-                    sort_spaces(&mut spaces);
+            // Fehler: Konto meldet sich evtl. erst noch an, beim Status-Ereignis wird neu geladen.
+            if let Ok(spaces) = result {
+                s.set_mentions(&account, &spaces);
+                if s.account.as_ref() == Some(&account) {
                     s.spaces = spaces;
                     if let Some(id) = s.open_on_start.take() {
                         return update(s, Message::OpenSpace(id));
                     }
                 }
-                Ok(_) => {}
-                // Konto meldet sich evtl. erst noch an: beim Status-Ereignis erneut laden.
-                Err(e) => s.error = Some(e),
             }
             Task::none()
         }
         Message::Emojis(account, names) => {
             s.custom_emojis.insert(account, names.into_iter().collect());
             Task::none()
+        }
+        Message::OpenIn(account, space) => {
+            let select = update(s, Message::SelectAccount(account));
+            Task::batch([select, update(s, Message::OpenSpace(space))])
         }
         Message::OpenSpace(id) => {
             let Some(account) = s.account.clone() else {
@@ -469,15 +709,19 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             let cached = s.messages.clone();
             let prep = s.prepare(&cached);
             s.cursor = None;
-            s.error = None;
             s.editing = None;
             s.picker = None;
+            s.confirm_delete = None;
+            s.show_down = false;
             if matches!(s.rhs, Some(Rhs::Thread { .. })) {
                 s.rhs = None;
             }
             if let Some(sp) = s.spaces.iter_mut().find(|x| x.id == id) {
                 sp.unread = false;
                 sp.mention_count = 0;
+            }
+            if let Some(m) = s.mentions.get_mut(&account) {
+                m.insert(id.clone(), 0);
             }
             let app = s.app.clone();
             let side = Task::perform(
@@ -516,7 +760,7 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
                         Task::batch([
                             to_bottom(),
                             Task::perform(
-                                tokio::time::sleep(std::time::Duration::from_secs(shot_delay())),
+                                tokio::time::sleep(Duration::from_secs(shot_delay())),
                                 |_| Message::Shoot,
                             ),
                         ])
@@ -525,32 +769,44 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
                     };
                     Task::batch([prep, scroll])
                 }
-                Err(e) => {
-                    s.error = Some(e);
-                    Task::none()
-                }
+                Err(e) => s.error(format!("Verlauf laden: {e}")),
             }
         }
         Message::Scrolled(vp) => {
             // anchor_bottom: absolute_offset zählt vom unteren Rand, reversed vom oberen.
+            let from_bottom = vp.absolute_offset().y;
+            s.show_down = from_bottom > SHOW_DOWN_PX;
+            if from_bottom < 40.0 {
+                s.trim_to_window();
+            }
             if vp.absolute_offset_reversed().y < LOAD_OLDER_PX && !s.loading {
                 return s.load_page(true);
             }
             Task::none()
         }
-        Message::Draft(t) => {
-            s.draft = t;
+        Message::ToBottom => {
+            s.show_down = false;
+            to_bottom()
+        }
+        Message::Compose(action) => {
+            s.composer.perform(action);
             Task::none()
         }
         Message::Send => {
             let Some((account, space)) = s.account_space() else {
                 return Task::none();
             };
-            let text = s.draft.trim().to_string();
+            if s.sending {
+                return Task::none();
+            }
+            let text = s.composer.text().trim().to_string();
             if let Some(m) = s.editing.clone() {
-                if text.is_empty() {
+                if text.is_empty() || text == m.text {
+                    s.editing = None;
+                    s.composer = text_editor::Content::new();
                     return Task::none();
                 }
+                s.sending = true;
                 return s.call(
                     move |app| async move { app.edit(&account, &m.space_id, &m.id, &text).await },
                     Message::Edited,
@@ -559,44 +815,53 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             if text.is_empty() && s.files.is_empty() {
                 return Task::none();
             }
+            s.sending = true;
             let files = s.files.clone();
             s.call(
                 move |app| async move { app.send(&account, &space, &text, None, &files).await },
                 Message::Sent,
             )
         }
-        Message::Sent(result) => match result {
-            Ok(m) => {
-                s.draft.clear();
-                s.files.clear();
-                Task::batch([s.upsert(m), to_bottom()])
+        Message::Sent(result) => {
+            s.sending = false;
+            match result {
+                // Erst nach Erfolg leeren, damit ein Fehlschlag nichts verliert (wie Tauri).
+                Ok(m) => {
+                    s.composer = text_editor::Content::new();
+                    s.files.clear();
+                    Task::batch([s.upsert(m, true), to_bottom()])
+                }
+                Err(e) => s.error(e),
             }
-            Err(e) => {
-                s.error = Some(e);
-                Task::none()
-            }
+        }
+        Message::EditLast => match s.messages.iter().rev().find(|m| m.mine).cloned() {
+            Some(m) => update(s, Message::Edit(m)),
+            None => Task::none(),
         },
         Message::Edit(m) => {
-            s.draft = m.text.clone();
+            s.composer = text_editor::Content::with_text(&m.text);
+            s.composer
+                .perform(text_editor::Action::Move(text_editor::Motion::DocumentEnd));
             s.editing = Some(m);
             operation::focus(COMPOSER)
         }
-        Message::Edited(result) => match result {
-            Ok(m) => {
-                s.editing = None;
-                s.draft.clear();
-                s.upsert(m)
+        Message::Edited(result) => {
+            s.sending = false;
+            match result {
+                Ok(m) => {
+                    s.editing = None;
+                    s.composer = text_editor::Content::new();
+                    s.upsert(m, false)
+                }
+                Err(e) => s.error(e),
             }
-            Err(e) => {
-                s.error = Some(e);
-                Task::none()
-            }
-        },
+        }
         Message::Escape => {
             if s.editing.take().is_some() {
-                s.draft.clear();
-            } else if s.picker.is_some() {
+                s.composer = text_editor::Content::new();
+            } else if s.picker.is_some() || s.confirm_delete.is_some() {
                 s.picker = None;
+                s.confirm_delete = None;
             } else if s.settings.is_some() {
                 s.settings = None;
             } else {
@@ -604,7 +869,12 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             }
             Task::none()
         }
+        Message::ConfirmDelete(id) => {
+            s.confirm_delete = id;
+            Task::none()
+        }
         Message::Delete(m) => {
+            s.confirm_delete = None;
             let Some(account) = s.account.clone() else {
                 return Task::none();
             };
@@ -614,18 +884,16 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
                 move |r| Message::Deleted(id.clone(), r),
             )
         }
-        Message::Deleted(id, result) => {
-            match result {
-                Ok(()) => {
-                    s.messages.retain(|m| m.id != id);
-                    if let Some(Rhs::Thread { replies, .. }) = &mut s.rhs {
-                        replies.retain(|m| m.id != id);
-                    }
+        Message::Deleted(id, result) => match result {
+            Ok(()) => {
+                s.messages.retain(|m| m.id != id);
+                if let Some(Rhs::Thread { replies, .. }) = &mut s.rhs {
+                    replies.retain(|m| m.id != id);
                 }
-                Err(e) => s.error = Some(e),
+                Task::none()
             }
-            Task::none()
-        }
+            Err(e) => s.error(e),
+        },
         Message::PickFiles => Task::perform(
             async {
                 rfd::AsyncFileDialog::new()
@@ -640,7 +908,7 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
         ),
         Message::Picked(paths) => {
             s.files.extend(paths);
-            Task::none()
+            operation::focus(COMPOSER)
         }
         Message::RemoveFile(i) => {
             if i < s.files.len() {
@@ -652,6 +920,7 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             let Some(account) = s.account.clone() else {
                 return Task::none();
             };
+            let name = att.name.clone();
             s.call(
                 move |app| async move {
                     let Some(file) = rfd::AsyncFileDialog::new()
@@ -664,15 +933,14 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
                     app.save_attachment(&account, &att, file.path()).await?;
                     Ok(true)
                 },
-                Message::Saved,
+                move |r| Message::Saved(name.clone(), r),
             )
         }
-        Message::Saved(result) => {
-            if let Err(e) = result {
-                s.error = Some(e);
-            }
-            Task::none()
-        }
+        Message::Saved(name, result) => match result {
+            Ok(true) => s.toast(format!("{name} gespeichert"), ToastKind::Info, None),
+            Ok(false) => Task::none(),
+            Err(e) => s.error(e),
+        },
         Message::Picker(id) => {
             s.picker = id;
             Task::none()
@@ -706,7 +974,7 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             if let Some(x) = s.messages.iter_mut().find(|x| x.id == m.id) {
                 apply(x);
             }
-            if let Some(Rhs::Thread { root, replies, .. }) = &mut s.rhs {
+            if let Some(Rhs::Thread { root, replies }) = &mut s.rhs {
                 if root.id == m.id {
                     apply(root);
                 }
@@ -717,15 +985,13 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             let e = emoji.clone();
             s.call(
                 move |app| async move { app.react(&account, &m.space_id, &m.id, &e, add).await },
-                Message::Reacted,
+                Message::Done,
             )
         }
-        Message::Reacted(result) | Message::Flagged(result) => {
-            if let Err(e) = result {
-                s.error = Some(e);
-            }
-            Task::none()
-        }
+        Message::Done(result) => match result {
+            Ok(()) => Task::none(),
+            Err(e) => s.error(e),
+        },
         Message::OpenThread(root) => {
             let (Some(account), Some(thread)) = (s.account.clone(), root.thread_id.clone()) else {
                 return Task::none();
@@ -735,42 +1001,37 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             s.rhs = Some(Rhs::Thread {
                 root,
                 replies: Vec::new(),
-                draft: String::new(),
             });
+            s.thread_composer = text_editor::Content::new();
             s.call(
                 move |app| async move { app.list_thread(&account, &space, &thread).await },
                 move |r| Message::Thread(root_id.clone(), r),
             )
         }
-        Message::Thread(root_id, result) => {
-            match result {
-                Ok(all) => {
-                    let task = s.prepare(&all);
-                    if let Some(Rhs::Thread { root, replies, .. }) = &mut s.rhs
-                        && root.id == root_id
-                    {
-                        *replies = all.into_iter().filter(|m| m.id != root_id).collect();
-                    }
-                    return task;
+        Message::Thread(root_id, result) => match result {
+            Ok(all) => {
+                let task = s.prepare(&all);
+                if let Some(Rhs::Thread { root, replies }) = &mut s.rhs
+                    && root.id == root_id
+                {
+                    *replies = all.into_iter().filter(|m| m.id != root_id).collect();
                 }
-                Err(e) => s.error = Some(e),
+                task
             }
-            Task::none()
-        }
-        Message::ThreadDraft(t) => {
-            if let Some(Rhs::Thread { draft, .. }) = &mut s.rhs {
-                *draft = t;
-            }
+            Err(e) => s.error(e),
+        },
+        Message::ThreadCompose(action) => {
+            s.thread_composer.perform(action);
             Task::none()
         }
         Message::ThreadSend => {
             let Some(account) = s.account.clone() else {
                 return Task::none();
             };
-            let Some(Rhs::Thread { root, draft, .. }) = &s.rhs else {
+            let Some(Rhs::Thread { root, .. }) = &s.rhs else {
                 return Task::none();
             };
-            let text = draft.trim().to_string();
+            let text = s.thread_composer.text().trim().to_string();
             let (space, thread) = (root.space_id.clone(), root.thread_id.clone());
             if text.is_empty() {
                 return Task::none();
@@ -785,15 +1046,10 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
         }
         Message::ThreadSent(result) => match result {
             Ok(m) => {
-                if let Some(Rhs::Thread { draft, .. }) = &mut s.rhs {
-                    draft.clear();
-                }
-                s.upsert(m)
+                s.thread_composer = text_editor::Content::new();
+                s.upsert(m, true)
             }
-            Err(e) => {
-                s.error = Some(e);
-                Task::none()
-            }
+            Err(e) => s.error(e),
         },
         Message::CloseRhs => {
             s.rhs = None;
@@ -821,38 +1077,131 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
                 move |r| Message::Found(query.clone(), r),
             )
         }
-        Message::Found(query, result) => {
-            match result {
-                Ok(found) => {
-                    let task = s.prepare(&found);
-                    if let Some(Rhs::Search { query: q, results }) = &mut s.rhs
-                        && *q == query
-                    {
-                        *results = Some(found);
-                    }
-                    return task;
+        Message::Found(query, result) => match result {
+            Ok(found) => {
+                let task = s.prepare(&found);
+                if let Some(Rhs::Search { query: q, results }) = &mut s.rhs
+                    && *q == query
+                {
+                    *results = Some(found);
                 }
-                Err(e) => s.error = Some(e),
+                task
             }
-            Task::none()
-        }
+            Err(e) => s.error(e),
+        },
         Message::Flag(id, favorite, muted) => {
             let Some(account) = s.account.clone() else {
                 return Task::none();
             };
-            if let Some(sp) = s.spaces.iter_mut().find(|x| x.id == id) {
-                if let Some(f) = favorite {
-                    sp.favorite = f;
-                }
-                if let Some(m) = muted {
-                    sp.muted = m;
-                }
+            let Some(sp) = s.spaces.iter_mut().find(|x| x.id == id) else {
+                return Task::none();
+            };
+            let before = (sp.favorite, sp.muted);
+            if let Some(f) = favorite {
+                sp.favorite = f;
             }
-            sort_spaces(&mut s.spaces);
+            if let Some(m) = muted {
+                sp.muted = m;
+            }
+            // Bei Fehler zurücksetzen (wie Tauri `setFlag`).
+            let id2 = id.clone();
             s.call(
                 move |app| async move { app.set_space_flag(&account, &id, favorite, muted).await },
-                Message::Flagged,
+                move |r| match r {
+                    Err(e) => Message::FlagFailed(id2.clone(), before.0, before.1, e),
+                    Ok(()) => Message::Ignore,
+                },
             )
+        }
+        Message::FlagFailed(id, favorite, muted, e) => {
+            if let Some(sp) = s.spaces.iter_mut().find(|x| x.id == id) {
+                sp.favorite = favorite;
+                sp.muted = muted;
+            }
+            s.error(e)
+        }
+        Message::Filter(q) => {
+            s.filter = q;
+            s.filter_seq += 1;
+            s.joinable.clear();
+            let seq = s.filter_seq;
+            if s.filter.trim().is_empty()
+                || s.current_kind() != Some(BackendKind::Mattermost)
+                || !s.online()
+            {
+                return Task::none();
+            }
+            // Wie Tauri: Server-Suche nach Kanälen erst nach 300 ms Tipp-Pause.
+            Task::perform(tokio::time::sleep(Duration::from_millis(300)), move |_| {
+                Message::Browse(seq)
+            })
+        }
+        Message::Browse(seq) => {
+            let Some(account) = s.account.clone() else {
+                return Task::none();
+            };
+            if seq != s.filter_seq {
+                return Task::none();
+            }
+            let q = s.filter.trim().to_string();
+            let app = s.app.clone();
+            Task::perform(
+                async move { app.browse_spaces(&account, &q).await.unwrap_or_default() },
+                move |found| Message::Joinable(seq, found),
+            )
+        }
+        Message::Joinable(seq, found) => {
+            if seq == s.filter_seq {
+                s.joinable = found;
+            }
+            Task::none()
+        }
+        Message::Join(id) => {
+            let Some(account) = s.account.clone() else {
+                return Task::none();
+            };
+            s.call(
+                move |app| async move { app.join_space(&account, &id).await },
+                Message::Joined,
+            )
+        }
+        Message::Joined(result) => match result {
+            Ok(space) => {
+                let id = space.id.clone();
+                s.spaces.retain(|x| x.id != id);
+                s.spaces.push(space);
+                s.filter.clear();
+                s.joinable.clear();
+                update(s, Message::OpenSpace(id))
+            }
+            Err(e) => s.error(e),
+        },
+        Message::Sort(sort) => {
+            s.prefs.sort = sort;
+            prefs::save(&s.prefs);
+            Task::none()
+        }
+        Message::ResizeStart => {
+            s.resizing = true;
+            Task::none()
+        }
+        Message::ResizeMove(x) => {
+            if s.resizing {
+                s.prefs.sidebar_width = x.clamp(SIDEBAR_MIN, SIDEBAR_MAX);
+            }
+            Task::none()
+        }
+        Message::ResizeEnd => {
+            if s.resizing {
+                s.resizing = false;
+                prefs::save(&s.prefs);
+            }
+            Task::none()
+        }
+        Message::ResizeReset => {
+            s.prefs.sidebar_width = SIDEBAR_DEFAULT;
+            prefs::save(&s.prefs);
+            Task::none()
         }
         Message::Image(path, img) => {
             s.images.insert(path, img);
@@ -869,6 +1218,7 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
         }
         Message::Settings(open) => {
             s.settings = open.then(|| Form {
+                server: "https://".into(),
                 client_id: s
                     .info
                     .as_ref()
@@ -895,21 +1245,23 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
         Message::Theme(name) => {
             s.look = Look::from_name(name);
             let notifications = s.info.as_ref().is_none_or(|i| i.notifications);
-            if let Err(e) = s.app.set_settings(name.into(), notifications) {
-                s.error = Some(e.to_string());
+            let saved = s.app.set_settings(name.into(), notifications);
+            let mut tasks = vec![refresh_info(s)];
+            if let Err(e) = saved {
+                tasks.push(s.error(e.to_string()));
             }
             if s.look.avatars {
                 let msgs = s.messages.clone();
-                return Task::batch([refresh_info(s), s.prepare(&msgs)]);
+                tasks.push(s.prepare(&msgs));
             }
-            refresh_info(s)
+            Task::batch(tasks)
         }
         Message::Notifications(on) => {
             let theme = s.info.as_ref().map(|i| i.theme.clone()).unwrap_or_default();
-            if let Err(e) = s.app.set_settings(theme, on) {
-                s.error = Some(e.to_string());
+            match s.app.set_settings(theme, on) {
+                Ok(()) => refresh_info(s),
+                Err(e) => s.error(e.to_string()),
             }
-            refresh_info(s)
         }
         Message::AddMattermost => {
             let Some(f) = &mut s.settings else {
@@ -917,23 +1269,25 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             };
             f.busy = true;
             f.message = None;
-            let (server, login, password, mfa) = (
+            let (id, server, login, password, mfa) = (
+                f.relogin.clone(),
                 f.server.clone(),
                 f.login.clone(),
                 f.password.clone(),
                 f.mfa.clone(),
             );
             f.password.clear();
+            f.mfa.clear();
             s.call(
                 move |app| async move {
-                    app.add_mattermost_account(None, &server, login, password, Some(mfa))
+                    app.add_mattermost_account(id, &server, login, password, Some(mfa))
                         .await
                         .map(|a| a.id)
                 },
                 Message::Added,
             )
         }
-        Message::AddGoogle => {
+        Message::AddGoogle(id) => {
             let Some(f) = &mut s.settings else {
                 return Task::none();
             };
@@ -941,7 +1295,7 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             f.message = Some("Anmeldung im Browser abschließen …".into());
             s.call(
                 move |app| async move {
-                    app.add_google_account(None, |url| {
+                    app.add_google_account(id, |url| {
                         let _ = opener::open_browser(&url);
                     })
                     .await
@@ -949,6 +1303,26 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
                 },
                 Message::Added,
             )
+        }
+        Message::Relogin(id) => {
+            let account = s
+                .info
+                .as_ref()
+                .and_then(|i| i.accounts.iter().find(|a| a.account.id == id))
+                .map(|a| a.account.clone());
+            match account {
+                Some(a) if a.kind == BackendKind::Google => update(s, Message::AddGoogle(Some(id))),
+                Some(a) => {
+                    if let Some(f) = &mut s.settings {
+                        f.relogin = Some(id);
+                        f.server = a.server.unwrap_or_else(|| "https://".into());
+                        f.login = a.login.unwrap_or_default();
+                        f.message = Some(format!("{} neu anmelden: Passwort eingeben.", a.label));
+                    }
+                    Task::none()
+                }
+                None => Task::none(),
+            }
         }
         Message::SaveGoogleClient => {
             if let Some(f) = &mut s.settings {
@@ -961,10 +1335,22 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             }
             refresh_info(s)
         }
-        Message::RemoveAccount(id) => s.call(
-            move |app| async move { app.remove_account(&id).await.map(|_| String::new()) },
-            Message::Added,
-        ),
+        Message::ConfirmRemove(id) => {
+            if let Some(f) = &mut s.settings {
+                f.confirm_remove = id;
+            }
+            Task::none()
+        }
+        Message::RemoveAccount(id) => {
+            if let Some(f) = &mut s.settings {
+                f.confirm_remove = None;
+            }
+            s.mentions.remove(&id);
+            s.call(
+                move |app| async move { app.remove_account(&id).await.map(|_| String::new()) },
+                Message::Added,
+            )
+        }
         Message::Added(result) => {
             if let Some(f) = &mut s.settings {
                 f.busy = false;
@@ -973,68 +1359,97 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
                     Ok(_) => "Konto angemeldet.".into(),
                     Err(e) => e.clone(),
                 });
+                if result.is_ok() {
+                    f.relogin = None;
+                }
             }
             match result {
                 Ok(id) if !id.is_empty() => {
+                    s.account = None;
                     let select = update(s, Message::SelectAccount(id));
                     Task::batch([refresh_info(s), select])
                 }
                 _ => refresh_info(s),
             }
         }
+        Message::CloseToast(id) => {
+            s.toasts.retain(|t| t.id != id);
+            Task::none()
+        }
+        Message::ToastAction(id, action) => {
+            s.toasts.retain(|t| t.id != id);
+            update(s, *action)
+        }
         Message::Event(account, mut event) => {
             if let Some(n) = s.app.handle_event(&account, &mut event) {
                 notify(n);
             }
-            if s.account.as_ref() != Some(&account) {
-                return if matches!(event, BackendEvent::Status { .. }) {
-                    refresh_info(s)
-                } else {
-                    Task::none()
-                };
-            }
+            let current = s.account.as_ref() == Some(&account);
             match event {
                 BackendEvent::MessageCreated { message } => {
-                    let visible = s.focused && Some(&message.space_id) == s.space.as_ref();
-                    let read = if visible && !message.mine {
-                        let (a, sp) = (account.clone(), message.space_id.clone());
-                        s.call(
-                            move |app| async move { app.mark_read(&a, &sp).await },
-                            |_| Message::Ignore,
-                        )
-                    } else {
-                        Task::none()
-                    };
-                    Task::batch([s.upsert(message), read])
+                    let visible =
+                        current && s.focused && Some(&message.space_id) == s.space.as_ref();
+                    let mut tasks = Vec::new();
+                    if !message.mine {
+                        if visible {
+                            let (a, sp) = (account.clone(), message.space_id.clone());
+                            tasks.push(s.call(
+                                move |app| async move { app.mark_read(&a, &sp).await },
+                                |_| Message::Ignore,
+                            ));
+                        } else {
+                            tasks.push(s.mark_unread(&account, &message));
+                        }
+                    }
+                    if current {
+                        tasks.push(s.upsert(message, true));
+                    }
+                    Task::batch(tasks)
                 }
-                BackendEvent::MessageUpdated { message } => s.upsert(message),
+                BackendEvent::MessageUpdated { message } if current => s.upsert(message, false),
+                BackendEvent::MessageUpdated { .. } => Task::none(),
                 BackendEvent::MessageDeleted { message_id, .. } => {
-                    s.messages.retain(|m| m.id != message_id);
-                    if let Some(Rhs::Thread { replies, .. }) = &mut s.rhs {
-                        replies.retain(|m| m.id != message_id);
+                    if current {
+                        s.messages.retain(|m| m.id != message_id);
+                        if let Some(Rhs::Thread { replies, .. }) = &mut s.rhs {
+                            replies.retain(|m| m.id != message_id);
+                        }
                     }
                     Task::none()
                 }
                 BackendEvent::SpaceUpdated { mut space } => {
-                    if Some(&space.id) == s.space.as_ref() && s.focused {
+                    let visible = current && Some(&space.id) == s.space.as_ref() && s.focused;
+                    if visible {
                         space.unread = false;
                         space.mention_count = 0;
                     }
-                    match s.spaces.iter_mut().find(|x| x.id == space.id) {
-                        Some(x) => *x = space,
-                        None => s.spaces.push(space),
+                    s.mentions
+                        .entry(account.clone())
+                        .or_default()
+                        .insert(space.id.clone(), space.mention_count);
+                    if current {
+                        match s.spaces.iter_mut().find(|x| x.id == space.id) {
+                            Some(x) => *x = space,
+                            None => s.spaces.push(space),
+                        }
                     }
-                    sort_spaces(&mut s.spaces);
                     Task::none()
                 }
-                BackendEvent::Status { online, .. } => {
+                BackendEvent::Status { online, detail } => {
                     let mut tasks = vec![refresh_info(s)];
                     if online {
-                        s.error = None;
-                        tasks.push(s.load_spaces(account));
-                        if s.space.is_some() {
+                        tasks.push(s.load_spaces(account.clone()));
+                        if current && s.space.is_some() {
                             tasks.push(s.load_page(false));
                         }
+                    } else if let Some(d) = detail {
+                        let label = s
+                            .info
+                            .as_ref()
+                            .and_then(|i| i.accounts.iter().find(|a| a.account.id == account))
+                            .map(|a| a.account.label.clone())
+                            .unwrap_or_else(|| "Konto".into());
+                        tasks.push(s.error(format!("{label}: {d}")));
                     }
                     Task::batch(tasks)
                 }
@@ -1043,6 +1458,9 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
         Message::Focus(focused) => {
             s.focused = focused;
             s.app.set_focused(focused);
+            if focused {
+                return s.mark_read_current();
+            }
             Task::none()
         }
         Message::UpdateFound(release) => {
@@ -1050,15 +1468,15 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::InstallUpdate => match s.update_available.clone() {
-            Some(r) => Task::perform(updater::install(r), Message::Updated),
+            Some(r) => {
+                let info = s.toast("Update wird geladen …", ToastKind::Info, None);
+                Task::batch([info, Task::perform(updater::install(r), Message::Updated)])
+            }
             None => Task::none(),
         },
         Message::Updated(result) => match result {
             Ok(()) => updater::restart(),
-            Err(e) => {
-                s.error = Some(format!("Update: {e}"));
-                Task::none()
-            }
+            Err(e) => s.error(format!("Update: {e}")),
         },
         Message::Shoot => window::latest()
             .and_then(window::screenshot)
@@ -1109,16 +1527,7 @@ fn refresh_info(s: &State) -> Task<Message> {
     Task::perform(async move { app.info().await }, Message::Info)
 }
 
-/// Favoriten zuerst, dann nach letzter Aktivität.
-fn sort_spaces(spaces: &mut [Space]) {
-    spaces.sort_by(|a, b| {
-        b.favorite
-            .cmp(&a.favorite)
-            .then(b.last_active.cmp(&a.last_active))
-    });
-}
-
-fn subscription(_s: &State) -> Subscription<Message> {
+fn subscription(s: &State) -> Subscription<Message> {
     let events = Subscription::run(|| {
         let rx = EVENTS.get().and_then(|m| m.lock().ok()?.take());
         iced::futures::stream::unfold(rx, |rx| async move {
@@ -1139,5 +1548,18 @@ fn subscription(_s: &State) -> Subscription<Message> {
         } => Message::Escape,
         _ => Message::Ignore,
     });
-    Subscription::batch([events, focus, keys])
+    let mut subs = vec![events, focus, keys];
+    // Seitenleiste ziehen: Mausbewegung nur abonnieren, solange gezogen wird.
+    if s.resizing {
+        subs.push(event::listen_with(|e, _, _| match e {
+            iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                Some(Message::ResizeMove(position.x))
+            }
+            iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                Some(Message::ResizeEnd)
+            }
+            _ => None,
+        }));
+    }
+    Subscription::batch(subs)
 }

@@ -64,6 +64,68 @@ fn autolink(line: &str) -> String {
     out
 }
 
+/// Lokales Datum einer Zeit in Millisekunden.
+pub fn date(ms: i64) -> Option<chrono::NaiveDate> {
+    chrono::DateTime::from_timestamp_millis(ms)
+        .map(|t| t.with_timezone(&chrono::Local).date_naive())
+}
+
+/// Uhrzeit `HH:MM` in Ortszeit.
+pub fn time(ms: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(ms)
+        .map(|t| t.with_timezone(&chrono::Local).format("%H:%M").to_string())
+        .unwrap_or_default()
+}
+
+/// Tagestrenner wie in der Tauri-Oberfläche: „Heute“, „Gestern“, sonst „Mittwoch, 18. November 2026“.
+pub fn day(ms: i64) -> String {
+    let Some(d) = date(ms) else {
+        return String::new();
+    };
+    let today = chrono::Local::now().date_naive();
+    day_label(d, today)
+}
+
+fn day_label(d: chrono::NaiveDate, today: chrono::NaiveDate) -> String {
+    use chrono::Datelike;
+    const DAYS: [&str; 7] = [
+        "Montag",
+        "Dienstag",
+        "Mittwoch",
+        "Donnerstag",
+        "Freitag",
+        "Samstag",
+        "Sonntag",
+    ];
+    const MONTHS: [&str; 12] = [
+        "Januar",
+        "Februar",
+        "März",
+        "April",
+        "Mai",
+        "Juni",
+        "Juli",
+        "August",
+        "September",
+        "Oktober",
+        "November",
+        "Dezember",
+    ];
+    if d == today {
+        return "Heute".into();
+    }
+    if today.pred_opt() == Some(d) {
+        return "Gestern".into();
+    }
+    format!(
+        "{}, {}. {} {}",
+        DAYS[d.weekday().num_days_from_monday() as usize],
+        d.day(),
+        MONTHS[d.month0() as usize],
+        d.year()
+    )
+}
+
 /// Dateigröße lesbar.
 pub fn size(bytes: Option<u64>) -> String {
     match bytes {
@@ -100,6 +162,15 @@ mod tests {
         assert_eq!(autolink("[t](https://x.de)"), "[t](https://x.de)");
         assert_eq!(autolink("`https://x.de`"), "`https://x.de`");
         assert_eq!(autolink("<https://x.de>"), "<https://x.de>");
+    }
+
+    #[test]
+    fn day_labels() {
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 21).unwrap();
+        assert_eq!(day_label(today, today), "Heute");
+        assert_eq!(day_label(today.pred_opt().unwrap(), today), "Gestern");
+        let d = chrono::NaiveDate::from_ymd_opt(2026, 11, 18).unwrap();
+        assert_eq!(day_label(d, today), "Mittwoch, 18. November 2026");
     }
 
     #[test]

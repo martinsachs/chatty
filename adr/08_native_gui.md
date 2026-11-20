@@ -117,6 +117,13 @@ Nutzer selbst auszuführen). Binärgröße: 12,6 MB, nach Ausbau 18,2 MB (Tauri 
   `pulldown-cmark`, `image` (MIT/Apache), BSL-1.0 (Boost, frei). Unverändert: `option-ext` (MPL-2.0),
   `self_cell` (Apache-2.0 gewählt).
 
+### Drift zur Tauri-Oberfläche (2026-11-21)
+
+Abgleich und Nachzug in [drift-native-tauri.md](../konzept/drift-native-tauri.md): Seitenleiste (Breite ziehen,
+Bereiche, Sortierung, Ausblendung alter DMs, Filter mit Kanalsuche, Kontozähler), Tagestrenner, ↓-Knopf,
+Nachrichtenfenster 300, mehrzeilige Eingabe, In-App-Hinweise, Rückfragen, Neu-Anmelden. Offen: abgelöste
+Fenster, Favoriten ziehen.
+
 ### Offen
 
 - Windows und macOS nur gebaut (CI), nicht bedient; Dateidialoge, Benachrichtigungen und Selbst-Update dort
