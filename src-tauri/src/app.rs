@@ -12,7 +12,7 @@ use tokio::sync::{RwLock, mpsc, watch};
 use crate::backend::google::GoogleBackend;
 use crate::backend::mattermost::MattermostBackend;
 use crate::backend::{ChatBackend, EventSender};
-use crate::config::{self, Config};
+use crate::config::{self, Config, GoogleConfig};
 use crate::error::{Error, Result};
 use crate::model::{
     Account, Attachment, BackendEvent, BackendKind, Message, Page, Space, SpaceKind, UploadFile,
@@ -217,6 +217,8 @@ pub struct AppInfo {
     theme: String,
     notifications: bool,
     google_configured: bool,
+    /// Client-ID zum Vorbelegen des Formulars; das Secret geht nicht ans Frontend.
+    google_client_id: String,
     accounts: Vec<AccountInfo>,
 }
 
@@ -243,7 +245,8 @@ pub async fn app_info(state: State<'_, AppState>) -> Cmd<AppInfo> {
     Ok(AppInfo {
         theme: cfg.theme,
         notifications: cfg.notifications,
-        google_configured: cfg.google.is_some_and(|g| !g.client_id.is_empty()),
+        google_configured: cfg.google.as_ref().is_some_and(|g| !g.client_id.is_empty()),
+        google_client_id: cfg.google.map(|g| g.client_id).unwrap_or_default(),
         accounts: accounts
             .into_iter()
             .map(|a| AccountInfo {
@@ -262,6 +265,36 @@ pub fn set_settings(state: State<'_, AppState>, theme: String, notifications: bo
     let mut cfg = state.config.lock().map_err(|_| Error::other("lock"))?;
     cfg.theme = theme;
     cfg.notifications = notifications;
+    config::save_config(&state.cfg_dir, &cfg)
+}
+
+/// Google-OAuth-Client setzen und in `chatty.toml` speichern. Leeres Secret behält das bisherige,
+/// leere Client-ID entfernt den Client.
+#[tauri::command]
+pub fn set_google_client(
+    state: State<'_, AppState>,
+    client_id: String,
+    client_secret: String,
+) -> Cmd<()> {
+    let (client_id, client_secret) = (client_id.trim(), client_secret.trim());
+    let mut cfg = state.config.lock().map_err(|_| Error::other("lock"))?;
+    cfg.google = if client_id.is_empty() {
+        None
+    } else {
+        let old = cfg
+            .google
+            .take()
+            .map(|g| g.client_secret)
+            .unwrap_or_default();
+        Some(GoogleConfig {
+            client_id: client_id.into(),
+            client_secret: if client_secret.is_empty() {
+                old
+            } else {
+                client_secret.into()
+            },
+        })
+    };
     config::save_config(&state.cfg_dir, &cfg)
 }
 

@@ -21,6 +21,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app::app_info,
             app::set_settings,
+            app::set_google_client,
             app::add_google_account,
             app::add_mattermost_account,
             app::remove_account,

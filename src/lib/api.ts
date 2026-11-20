@@ -20,6 +20,7 @@ export interface AppInfo {
   theme: "mattermost" | "slack";
   notifications: boolean;
   google_configured: boolean;
+  google_client_id: string;
   accounts: AccountInfo[];
 }
 
@@ -89,6 +90,8 @@ export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
   setSettings: (theme: string, notifications: boolean) =>
     invoke<void>("set_settings", { theme, notifications }),
+  setGoogleClient: (clientId: string, clientSecret: string) =>
+    invoke<void>("set_google_client", { clientId, clientSecret }),
   addGoogle: (accountId?: string) => invoke<Account>("add_google_account", { accountId }),
   addMattermost: (a: { accountId?: string; server: string; login: string; password: string; mfa?: string }) =>
     invoke<Account>("add_mattermost_account", a),

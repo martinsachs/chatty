@@ -17,6 +17,27 @@
   let busy = $state(false);
   let error = $state("");
 
+  // Google-OAuth-Client (vom Workspace-Admin); Secret wird nie zurückgelesen
+  let clientId = $state(chat.googleClientId);
+  let clientSecret = $state("");
+  let editClient = $state(!chat.googleConfigured);
+
+  async function saveClient(e: SubmitEvent) {
+    e.preventDefault();
+    busy = true;
+    error = "";
+    try {
+      await api.setGoogleClient(clientId, clientSecret);
+      clientSecret = "";
+      await chat.refreshInfo();
+      editClient = !chat.googleConfigured;
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function done(promise: Promise<unknown>) {
     busy = true;
     error = "";
@@ -103,14 +124,26 @@
         {/each}
       {:else if tab === "add-mm"}
         <h3>Google Chat</h3>
-        {#if chat.googleConfigured}
+        {#if chat.googleConfigured && !editClient}
           <p>Anmeldung im Browser mit deinem Google-Konto.</p>
           <button class="btn" disabled={busy} onclick={() => addGoogle()}>Mit Google anmelden</button>
+          <button class="btn secondary" disabled={busy} onclick={() => (editClient = true)}>OAuth-Client ändern</button>
         {:else}
-          <p class="muted">
-            Kein Google-OAuth-Client konfiguriert. <code>client_id</code> und <code>client_secret</code> in
-            <code>chatty.toml</code> eintragen (siehe usage.md) und chatty neu starten.
-          </p>
+          <p class="muted">OAuth-Client vom Workspace-Admin eintragen (siehe usage.md). Wird in <code>chatty.toml</code> gespeichert.</p>
+          <form onsubmit={saveClient}>
+            <label class="field">Client-ID<input bind:value={clientId} placeholder="….apps.googleusercontent.com" /></label>
+            <label class="field"
+              >Client-Secret{#if chat.googleConfigured}<small class="muted"> (leer = unverändert)</small>{/if}<input
+                type="password"
+                bind:value={clientSecret}
+                autocomplete="off"
+              /></label
+            >
+            <button class="btn" disabled={busy}>Speichern</button>
+            {#if chat.googleConfigured}
+              <button type="button" class="btn secondary" onclick={() => (editClient = false)}>Abbrechen</button>
+            {/if}
+          </form>
         {/if}
 
         <h3>{reloginId ? "Mattermost – neu anmelden" : "Mattermost"}</h3>

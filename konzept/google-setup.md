@@ -85,6 +85,8 @@ client_id = "<Client-ID>"
 client_secret = "<Clientschlüssel>"
 ```
 
+Oder in chatty unter **Konto hinzufügen → Google Chat** eintragen; chatty schreibt dann die Datei.
+
 Danach in chatty **Konto hinzufügen → Google**: Der Browser öffnet die Google-Anmeldung, nach der
 Zustimmung zeigt er „Anmeldung abgeschlossen“. Das Refresh-Token liegt danach im Schlüsselbund des
 Betriebssystems, nicht in der Konfigurationsdatei.

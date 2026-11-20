@@ -84,7 +84,19 @@ pub fn load_config(dir: &Path) -> Result<Config> {
 
 pub fn save_config(dir: &Path, cfg: &Config) -> Result<()> {
     let text = toml::to_string_pretty(cfg).map_err(|e| Error::other(e.to_string()))?;
-    std::fs::write(dir.join("chatty.toml"), text)?;
+    let path = dir.join("chatty.toml");
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    // Enthält ggf. das Google-Client-Secret: nur für den Nutzer lesbar, Rechte vor dem Inhalt setzen.
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
+    let mut file = opts.open(&path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    std::io::Write::write_all(&mut file, text.as_bytes())?;
     Ok(())
 }
 
@@ -126,6 +138,15 @@ mod tests {
 
         save_config(dir.path(), &cfg).unwrap();
         assert_eq!(load_config(dir.path()).unwrap(), cfg);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(dir.path().join("chatty.toml"))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
     }
 
     #[test]

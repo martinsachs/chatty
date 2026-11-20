@@ -35,7 +35,9 @@ unter **Konten → Neu anmelden** erneut einloggen.
 
 Google Chat braucht einen OAuth-Client der eigenen Organisation. Den legt einmalig ein
 Google-Workspace- bzw. Cloud-Admin an: [konzept/google-setup.md](konzept/google-setup.md).
-Der Admin verteilt `client_id` und `client_secret`; jeder Nutzer trägt sie in `chatty.toml` ein:
+Der Admin verteilt `client_id` und `client_secret`; jeder Nutzer trägt sie unter
+**Einstellungen → Konto hinzufügen → Google Chat** ein. chatty speichert sie in `chatty.toml`
+(unter Linux/macOS nur für den Nutzer lesbar). Alternativ direkt in die Datei:
 
 ```toml
 [google]
@@ -43,7 +45,7 @@ client_id = "123456789-abc.apps.googleusercontent.com"
 client_secret = "GOCSPX-..."
 ```
 
-Danach chatty neu starten, **+ → Mit Google anmelden**. Der Browser öffnet die Google-Anmeldung;
+Danach **Mit Google anmelden** (nach Bearbeiten der Datei von Hand vorher chatty neu starten). Der Browser öffnet die Google-Anmeldung;
 nach Zustimmung meldet die Seite „Anmeldung abgeschlossen“ und das Konto erscheint links.
 
 Das `client_secret` eines Desktop-Clients ist laut Google nicht vertraulich (es steckt in jeder

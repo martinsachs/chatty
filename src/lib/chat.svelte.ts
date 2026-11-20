@@ -19,6 +19,7 @@ class Chat {
   theme = $state<"mattermost" | "slack">("mattermost");
   notifications = $state(true);
   googleConfigured = $state(false);
+  googleClientId = $state("");
   accounts = $state<AccountInfo[]>([]);
   /** Konto-ID → Spaces */
   spaces = $state<Record<string, Space[]>>({});
@@ -53,6 +54,7 @@ class Chat {
     this.theme = info.theme;
     this.notifications = info.notifications;
     this.googleConfigured = info.google_configured;
+    this.googleClientId = info.google_client_id;
     this.accounts = info.accounts;
     if (!this.account && this.accounts.length) this.account = this.accounts[0].id;
   }
