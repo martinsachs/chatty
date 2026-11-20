@@ -225,7 +225,15 @@ impl GoogleBackend {
             return Ok(n.clone());
         }
         let url = self.api.chat(&format!("{}/members", g.name));
-        let list: MemberList = self.api.get(&url, &[("pageSize", "100")]).await?;
+        let list: MemberList = match self.api.get(&url, &[("pageSize", "100")]).await {
+            Ok(list) => list,
+            Err(e) if poll::is_transient(&e) => return Err(e),
+            // Mitglieder nicht lesbar: Space-ID als Name merken, statt die ganze Liste scheitern zu lassen.
+            Err(_) => {
+                lock(&self.space_names).insert(g.name.clone(), g.name.clone());
+                return Ok(g.name.clone());
+            }
+        };
         let mut names = Vec::new();
         for m in list.memberships.iter().filter_map(|m| m.member.as_ref()) {
             if m.name != self.me.id && m.kind != "BOT" {
@@ -528,8 +536,9 @@ impl ChatBackend for GoogleBackend {
         self: Arc<Self>,
         tx: EventSender,
         active_space: watch::Receiver<Option<String>>,
+        focused: watch::Receiver<bool>,
     ) -> tauri::async_runtime::JoinHandle<()> {
-        tauri::async_runtime::spawn(poll::run(self, tx, active_space))
+        tauri::async_runtime::spawn(poll::run(self, tx, active_space, focused))
     }
 }
 
@@ -760,5 +769,89 @@ mod tests {
             2
         );
         assert_eq!(log.iter().filter(|r| r.contains("/members")).count(), 1);
+    }
+
+    #[tokio::test]
+    async fn dm_name_falls_back_to_space_id() {
+        let (base, log) = mock(|req, _, _| {
+            if req.starts_with("POST /token") {
+                return (200, r#"{"access_token":"x","expires_in":3600}"#.into());
+            }
+            if req.starts_with("GET /v1/spaces?") {
+                return (
+                    200,
+                    r#"{"spaces":[{"name":"spaces/X","spaceType":"DIRECT_MESSAGE","lastActiveTime":"2026-01-01T00:00:05Z"}]}"#.into(),
+                );
+            }
+            if req.contains("spaceReadState") {
+                return (200, r#"{"lastReadTime":"2026-01-01T00:00:05Z"}"#.into());
+            }
+            (404, "{}".into())
+        })
+        .await;
+        let b = GoogleBackend::for_test(ep(&base), "users/7");
+        let s = b.list_spaces().await.unwrap();
+        assert_eq!(s[0].name, "spaces/X", "Mitglieder 404 → Space-ID als Name");
+        b.list_spaces().await.unwrap();
+        let members = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.contains("/members"))
+            .count();
+        assert_eq!(members, 1, "Rückfall gemerkt");
+    }
+
+    #[tokio::test]
+    async fn unreadable_space_does_not_block_others() {
+        let round = Arc::new(AtomicUsize::new(0));
+        let r2 = round.clone();
+        let (base, log) = mock(move |req, _, _| {
+            if req.starts_with("POST /token") {
+                return (200, r#"{"access_token":"x","expires_in":3600}"#.into());
+            }
+            if req.starts_with("GET /v1/spaces?") {
+                // Ab dem zweiten Abruf sind beide Spaces aktiver geworden.
+                let t = if r2.fetch_add(1, Ordering::SeqCst) == 0 { 1 } else { 9 };
+                return (
+                    200,
+                    format!(
+                        r#"{{"spaces":[
+                        {{"name":"spaces/A","spaceType":"SPACE","displayName":"A","lastActiveTime":"2026-01-01T00:00:0{t}Z"}},
+                        {{"name":"spaces/B","spaceType":"SPACE","displayName":"B","lastActiveTime":"2026-01-01T00:00:0{t}Z"}}]}}"#
+                    ),
+                );
+            }
+            if req.contains("spaceReadState") {
+                return (200, r#"{"lastReadTime":"2026-01-01T00:00:00Z"}"#.into());
+            }
+            if req.starts_with("GET /v1/spaces/A/messages") {
+                return (404, "{}".into());
+            }
+            if req.starts_with("GET /v1/spaces/B/messages") {
+                return (
+                    200,
+                    r#"{"messages":[{"name":"spaces/B/messages/1","sender":{"name":"users/42","displayName":"Erika"},"createTime":"2026-01-01T00:00:09Z","text":"neu"}]}"#.into(),
+                );
+            }
+            (404, "{}".into())
+        })
+        .await;
+        let b = GoogleBackend::for_test(ep(&base), "users/7");
+        let mut st = poll::State::for_test(None, true);
+        poll::poll_spaces(&b, &mut st).await.unwrap();
+        let events = poll::poll_spaces(&b, &mut st).await.unwrap();
+        assert!(
+            events.iter().any(|e| matches!(e, crate::model::BackendEvent::MessageCreated { message } if message.space_id == "spaces/B")),
+            "B wird trotz Fehler in A gemeldet"
+        );
+        poll::poll_spaces(&b, &mut st).await.unwrap();
+        let a_calls = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.starts_with("GET /v1/spaces/A/messages"))
+            .count();
+        assert_eq!(a_calls, 1, "A nicht bei jedem Durchlauf erneut abgefragt");
     }
 }

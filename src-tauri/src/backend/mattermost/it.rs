@@ -150,7 +150,9 @@ async fn scenario() -> Result<()> {
 
     let (tx, mut rx) = mpsc::unbounded_channel();
     let (_active_tx, active_rx) = watch::channel(None);
-    let task = me.clone().start_events(tx, active_rx);
+    let task = me
+        .clone()
+        .start_events(tx, active_rx, watch::channel(true).1);
     wait_for(&mut rx, "online", |e| {
         matches!(e, BackendEvent::Status { online: true, .. })
     })
@@ -442,7 +444,7 @@ async fn reconnect_via_proxy(proxy: &str) -> Result<()> {
     );
     let (tx, mut rx) = mpsc::unbounded_channel();
     let (_active_tx, active_rx) = watch::channel(None);
-    let task = backend.start_events(tx, active_rx);
+    let task = backend.start_events(tx, active_rx, watch::channel(true).1);
     let online = |e: &BackendEvent| matches!(e, BackendEvent::Status { online: true, .. });
     wait_for(&mut rx, "online über Proxy", online).await?;
     println!("warte 35 s auf stabile Sitzung …");

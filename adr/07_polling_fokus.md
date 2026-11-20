@@ -1,6 +1,6 @@
 # ADR 07: Google-Polling nach Fensterfokus
 
-Status: vorgeschlagen (2026-11-20)
+Status: angenommen und umgesetzt (2026-11-20); nur gegen HTTP-Mock geprüft
 
 ## Kontext
 

@@ -20,6 +20,14 @@ pub fn run() {
             app::setup(app.handle())?;
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if matches!(
+                event,
+                tauri::WindowEvent::Focused(_) | tauri::WindowEvent::Destroyed
+            ) {
+                app::window_focus_changed(tauri::Manager::app_handle(window));
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             app::app_info,
             app::set_settings,

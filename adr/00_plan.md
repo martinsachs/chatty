@@ -154,6 +154,9 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
   `https:`-Bilder, Konfigurations- und Datenverzeichnis 0700, Konfigdateien atomar mit 0600.
   Nicht im Fenster geprüft: Anhang wählen/senden/speichern über die neuen Dialoge.
 
+- P5 Google (2026-11-20): Polling nach Fensterfokus (ADR 07), Fehler je Space überspringen, 429 nicht als
+  offline, DM-Name mit Rückfall auf die Space-ID. Nur Unit-Tests mit HTTP-Mock; Livetest fehlt (kein OAuth-Client).
+
 ### Nicht getestet / offen
 - Google Chat live: kein OAuth-Client vorhanden. Unbestätigt: `orderBy` in Kleinschreibung,
   Upload als `multipart/related`, GET-Pfad des Lesestatus, `users/all` für @all, Scope-Namen im Detail.

@@ -39,6 +39,8 @@ pub struct AppState {
     avatars: Mutex<HashMap<String, AvatarCell>>,
     /// Im Dialog gewählte Dateien; das Frontend kennt nur IDs und Namen (ADR 06).
     picked: Picked,
+    /// Hat irgendein chatty-Fenster den Fokus? (Google-Polling, Benachrichtigungen; ADR 07)
+    focused: watch::Sender<bool>,
 }
 
 /// Für das Frontend: gewählte Datei ohne Pfad.
@@ -117,7 +119,10 @@ impl AppState {
     async fn start(&self, backend: Arc<dyn ChatBackend>) {
         let id = backend.account().id.clone();
         let (active, active_rx) = watch::channel(None);
-        let task = backend.clone().start_events(self.tx.clone(), active_rx);
+        let task =
+            backend
+                .clone()
+                .start_events(self.tx.clone(), active_rx, self.focused.subscribe());
         if let Some(old) = self.running.write().await.insert(
             id,
             Running {
@@ -158,6 +163,7 @@ pub fn setup(app: &AppHandle) -> Result<()> {
         active: Mutex::new(HashMap::new()),
         avatars: Mutex::new(HashMap::new()),
         picked: Picked::default(),
+        focused: watch::channel(true).0,
     });
 
     tauri::async_runtime::spawn(event_loop(app.clone(), rx));
@@ -247,10 +253,7 @@ fn notify(app: &AppHandle, state: &AppState, account: &str, m: &Message) {
     if !state.config.lock().map(|c| c.notifications).unwrap_or(true) {
         return;
     }
-    let focused = app
-        .webview_windows()
-        .values()
-        .any(|w| w.is_focused().unwrap_or(false));
+    let focused = *state.focused.borrow();
     let visible = state
         .active
         .lock()
@@ -720,6 +723,20 @@ pub async fn set_active(
         let _ = r.active.send(space);
     }
     Ok(())
+}
+
+/// Fensterfokus neu bestimmen (bei jedem Fokus- oder Schließ-Ereignis eines Fensters). Ausgewertet wird
+/// der Zustand aller Fenster, damit die Reihenfolge der Ereignisse beim Fensterwechsel keine Rolle spielt.
+pub fn window_focus_changed(app: &AppHandle) {
+    let any = app
+        .webview_windows()
+        .values()
+        .any(|w| w.is_focused().unwrap_or(false));
+    if let Some(state) = app.try_state::<AppState>() {
+        state
+            .focused
+            .send_if_modified(|f| std::mem::replace(f, any) != any);
+    }
 }
 
 /// Öffnet einen Space in einem eigenen, kleinen Fenster.

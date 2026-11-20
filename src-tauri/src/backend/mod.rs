@@ -111,5 +111,6 @@ pub trait ChatBackend: Send + Sync {
         self: Arc<Self>,
         tx: EventSender,
         active_space: watch::Receiver<Option<String>>,
+        focused: watch::Receiver<bool>,
     ) -> tauri::async_runtime::JoinHandle<()>;
 }

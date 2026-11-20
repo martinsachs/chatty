@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     );
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let (_active, active_rx) = tokio::sync::watch::channel(None);
-    let task = backend.start_events(tx, active_rx);
+    let task = backend.start_events(tx, active_rx, tokio::sync::watch::channel(true).1);
     let start = Instant::now();
     let end = tokio::time::Instant::now() + Duration::from_secs(secs);
     while let Ok(Some((_, event))) = tokio::time::timeout_at(end, rx.recv()).await {

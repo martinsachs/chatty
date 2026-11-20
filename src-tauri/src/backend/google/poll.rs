@@ -67,8 +67,8 @@ pub fn changed_spaces<'a>(prev: &HashMap<String, Space>, now: &'a [Space]) -> Ve
     now.iter().filter(|s| prev.get(&s.id) != Some(*s)).collect()
 }
 
-/// Fehler, die auf Verbindungs-/Quotenprobleme deuten (offline + Backoff).
-fn is_transient(e: &Error) -> bool {
+/// Fehler, die auf Verbindungs-/Quotenprobleme deuten (Backoff, Abbruch des Durchlaufs).
+pub(super) fn is_transient(e: &Error) -> bool {
     match e {
         Error::Http(_) | Error::Auth(_) => true,
         Error::Api { status, .. } => *status == 429 || *status >= 500,
@@ -76,12 +76,24 @@ fn is_transient(e: &Error) -> bool {
     }
 }
 
+/// Als „offline“ melden? Nicht bei 429: das ist Quote, keine Verbindungsstörung (Backoff reicht).
+fn reports_offline(e: &Error) -> bool {
+    is_transient(e) && !matches!(e, Error::Api { status: 429, .. })
+}
+
+/// Den offenen Space in der Space-Abfrage überspringen? Nur, wenn ihn die schnelle Abfrage bedient,
+/// also ein Fenster den Fokus hat (ADR 07).
+fn skip_open_space(focused: bool, open: Option<&str>, space: &str) -> bool {
+    focused && open == Some(space)
+}
+
 fn backoff(failures: u32) -> Duration {
     Duration::from_secs((5u64 << failures.min(6)).min(300))
 }
 
-struct State {
+pub(super) struct State {
     active: Option<String>,
+    focused: bool,
     snap: Option<(String, Snapshot)>,
     spaces: Option<HashMap<String, Space>>,
 }
@@ -90,6 +102,7 @@ pub async fn run(
     b: Arc<GoogleBackend>,
     tx: EventSender,
     mut active_rx: watch::Receiver<Option<String>>,
+    mut focused_rx: watch::Receiver<bool>,
 ) {
     let account = b.account().id.clone();
     let mut active_tick = interval(Duration::from_secs(b.poll.active_secs.max(1)));
@@ -98,6 +111,7 @@ pub async fn run(
     spaces_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let mut st = State {
         active: active_rx.borrow().clone(),
+        focused: *focused_rx.borrow(),
         snap: None,
         spaces: None,
     };
@@ -116,6 +130,18 @@ pub async fn run(
                 st.snap = None;
                 poll_active(&b, &mut st).await
             }
+            changed = focused_rx.changed() => {
+                if changed.is_err() {
+                    return;
+                }
+                let focused = *focused_rx.borrow_and_update();
+                // Fokus zurück: erst die Space-Abfrage samt offenem Space nachholen, dann übernimmt
+                // die schnelle Abfrage mit frischem Stand (keine doppelten Ereignisse).
+                let result = if focused { poll_spaces(&b, &mut st).await } else { Ok(Vec::new()) };
+                st.focused = focused;
+                st.snap = None;
+                result
+            }
         };
         let mut out = Vec::new();
         match result {
@@ -131,7 +157,7 @@ pub async fn run(
                 out.extend(events);
             }
             Err(e) if is_transient(&e) => {
-                if online {
+                if online && reports_offline(&e) {
                     online = false;
                     out.push(BackendEvent::Status {
                         online: false,
@@ -158,7 +184,8 @@ pub async fn run(
 }
 
 async fn poll_active(b: &GoogleBackend, st: &mut State) -> Result<Vec<BackendEvent>> {
-    let Some(space) = st.active.clone() else {
+    // Ohne Fokus übernimmt die Space-Abfrage den offenen Space (ADR 07).
+    let Some(space) = st.active.clone().filter(|_| st.focused) else {
         return Ok(Vec::new());
     };
     let page = b.latest_page(&space).await?;
@@ -170,18 +197,39 @@ async fn poll_active(b: &GoogleBackend, st: &mut State) -> Result<Vec<BackendEve
     Ok(events)
 }
 
-async fn poll_spaces(b: &GoogleBackend, st: &mut State) -> Result<Vec<BackendEvent>> {
+#[cfg(test)]
+impl State {
+    pub(super) fn for_test(active: Option<String>, focused: bool) -> Self {
+        Self {
+            active,
+            focused,
+            snap: None,
+            spaces: None,
+        }
+    }
+}
+
+pub(super) async fn poll_spaces(b: &GoogleBackend, st: &mut State) -> Result<Vec<BackendEvent>> {
     let spaces = b.list_spaces().await?;
     let mut events = Vec::new();
     if let Some(prev) = &st.spaces {
         for s in changed_spaces(prev, &spaces) {
             events.push(BackendEvent::SpaceUpdated { space: s.clone() });
             let Some(old) = prev.get(&s.id) else { continue };
-            if st.active.as_deref() == Some(s.id.as_str()) || s.last_active <= old.last_active {
+            if skip_open_space(st.focused, st.active.as_deref(), &s.id)
+                || s.last_active <= old.last_active
+            {
                 continue;
             }
-            for m in b.messages_since(&s.id, old.last_active).await? {
-                events.push(BackendEvent::MessageCreated { message: m });
+            match b.messages_since(&s.id, old.last_active).await {
+                Ok(msgs) => events.extend(
+                    msgs.into_iter()
+                        .map(|message| BackendEvent::MessageCreated { message }),
+                ),
+                Err(e) if is_transient(&e) => return Err(e),
+                // z. B. 403/404: diesen Space überspringen, die anderen melden; sein neuer Stand wird
+                // übernommen, damit er nicht bei jedem Durchlauf erneut abgefragt wird.
+                Err(e) => eprintln!("Google: Nachrichten von {} nicht lesbar: {e}", s.id),
             }
         }
     }
@@ -193,6 +241,27 @@ async fn poll_spaces(b: &GoogleBackend, st: &mut State) -> Result<Vec<BackendEve
 mod tests {
     use super::*;
     use crate::model::{SpaceKind, User};
+
+    #[test]
+    fn quota_is_not_offline() {
+        let api = |status| Error::Api {
+            status,
+            body: String::new(),
+        };
+        assert!(!reports_offline(&api(429)), "429: Backoff ja, offline nein");
+        assert!(is_transient(&api(429)));
+        assert!(reports_offline(&api(503)));
+        assert!(reports_offline(&Error::Auth("x".into())));
+        assert!(!reports_offline(&api(404)));
+    }
+
+    #[test]
+    fn open_space_skipped_only_with_focus() {
+        assert!(skip_open_space(true, Some("spaces/A"), "spaces/A"));
+        assert!(!skip_open_space(false, Some("spaces/A"), "spaces/A"));
+        assert!(!skip_open_space(true, Some("spaces/A"), "spaces/B"));
+        assert!(!skip_open_space(true, None, "spaces/A"));
+    }
 
     fn msg(id: &str, created: i64) -> Message {
         Message {

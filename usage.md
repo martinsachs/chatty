@@ -70,7 +70,8 @@ client_id = "..."
 client_secret = "..."
 
 [poll]                    # nur Google Chat
-active_secs = 5           # offener Space
+active_secs = 5           # offener Space, solange ein chatty-Fenster den Fokus hat
+                          # (ohne Fokus läuft er im Takt der Space-Liste mit)
 spaces_secs = 20          # Space-Liste / Ungelesen
 ```
 
