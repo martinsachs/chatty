@@ -1,0 +1,13 @@
+[package]
+name = "chatty-native"
+version = "0.1.1"
+description = "chatty mit nativer Oberfläche (iced, ohne WebView) – Prototyp, ADR 08"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+chatty-core = { path = "../core" }
+# Software-Renderer (tiny-skia) statt wgpu: kein GPU-Treiber im Prozess, weniger Speicher.
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "x11", "wayland", "tokio", "thread-pool"] }
+tokio = { version = "1.54.1", features = ["sync", "time"] }
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }

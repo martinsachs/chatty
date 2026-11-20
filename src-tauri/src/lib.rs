@@ -1,14 +1,8 @@
 mod app;
-pub mod backend;
-pub mod config;
-pub mod error;
-pub mod model;
-pub mod secrets;
-pub mod store;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    backend::init_tls();
+    chatty_core::backend::init_tls();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())

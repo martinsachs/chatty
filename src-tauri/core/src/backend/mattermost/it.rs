@@ -1,7 +1,7 @@
 //! Integrationstest gegen einen echten Server (z. B. Docker `mattermost/mattermost-preview`).
 //!
 //! Testserver und Umgebungsvariablen: `scripts/mm-test-server.sh` (schreibt `src-tauri/target/mm-test.env`).
-//! Aufruf: `set -a; . target/mm-test.env; set +a; cargo test mattermost::it -- --ignored --nocapture`.
+//! Aufruf: `set -a; . target/mm-test.env; set +a; cargo test -p chatty-core mattermost::it -- --ignored --nocapture`.
 //! Legt Keyring-Einträge `chatty-it-*` an und löscht sie am Ende wieder.
 
 use std::sync::Arc;

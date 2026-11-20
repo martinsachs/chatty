@@ -46,23 +46,28 @@ sudo apt install libwebkit2gtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev
 npm install
 npm run tauri dev        # App mit Hot Reload starten
 npm run check            # Svelte/TypeScript prüfen
-cd src-tauri && cargo test && cargo clippy --all-targets -- -D warnings
+cd src-tauri && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings
 npm run tauri build      # Installer für das eigene System
 ```
 
-Projektaufbau:
+Projektaufbau (Cargo-Workspace in `src-tauri/`):
 
 ```
-src/                    Svelte-Frontend (Komponenten, Themes in app.css)
-src-tauri/src/
-  app.rs                Zustand, Ereignisschleife, Tauri-Kommandos, Benachrichtigungen
-  backend/mod.rs        Trait ChatBackend – Schnittstelle für jeden Chatdienst
-  backend/google/       Google Chat
-  backend/mattermost/   Mattermost
-  store.rs              SQLite-Cache
-  secrets.rs            OS-Schlüsselbund
-  config.rs             chatty.toml, accounts.json
+src/                    Svelte-Frontend der Tauri-Variante (Themes in app.css, retro.css)
+src-tauri/src/app.rs    Tauri-Schicht: Kommandos, Dialoge, Fenster, avatar://
+src-tauri/core/         chatty-core, ohne Oberfläche:
+  src/app.rs            Fassade App: Konten, Ereignis-Cache, Benachrichtigungen
+  src/backend/mod.rs    Trait ChatBackend – Schnittstelle für jeden Chatdienst
+  src/backend/google/   Google Chat
+  src/backend/mattermost/ Mattermost
+  src/store.rs          SQLite-Cache
+  src/secrets.rs        OS-Schlüsselbund
+  src/config.rs         chatty.toml, accounts.json
+src-tauri/native/       chatty-native: Prototyp mit iced statt WebView (ADR 08)
 ```
+
+Native Variante (Prototyp, nutzt die Konten der Tauri-Variante):
+`cd src-tauri && cargo run --release -p chatty-native`
 
 Weitere Dienste (z. B. Slack) kommen als neues Modul unter `backend/` dazu, das `ChatBackend`
 implementiert.

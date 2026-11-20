@@ -1,15 +1,15 @@
 //! Testwerkzeug: Backend-Ereignisse eines Mattermost-Kontos mitschneiden.
 //!
-//! `cargo run --example mm_watch -- <konto-id> <server-url> <sekunden>`
+//! `cargo run -p chatty-core --example mm_watch -- <konto-id> <server-url> <sekunden>`
 //! Das Token muss im Keyring liegen (App-Konto oder `mm_login`).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use chatty_lib::backend::ChatBackend;
-use chatty_lib::backend::mattermost::MattermostBackend;
-use chatty_lib::error::{Error, Result};
-use chatty_lib::model::{Account, BackendKind};
+use chatty_core::backend::ChatBackend;
+use chatty_core::backend::mattermost::MattermostBackend;
+use chatty_core::error::{Error, Result};
+use chatty_core::model::{Account, BackendKind};
 
 #[tokio::main]
 async fn main() -> Result<()> {

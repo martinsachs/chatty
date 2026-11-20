@@ -1,10 +1,10 @@
 //! Testwerkzeug: Session-Token des Testnutzers im Keyring ablegen bzw. löschen.
 //!
-//! `cargo run --example mm_login -- <konto-id> [--delete]`
+//! `cargo run -p chatty-core --example mm_login -- <konto-id> [--delete]`
 //! Erwartet `CHATTY_MM_PROXY_URL`, `CHATTY_MM_USER`, `CHATTY_MM_PASSWORD` (aus `src-tauri/target/mm-test.env`).
 
-use chatty_lib::backend::mattermost::MattermostBackend;
-use chatty_lib::error::{Error, Result};
+use chatty_core::backend::mattermost::MattermostBackend;
+use chatty_core::error::{Error, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -14,7 +14,7 @@ async fn main() -> Result<()> {
         .cloned()
         .ok_or_else(|| Error::other("Aufruf: mm_login <konto-id> [--delete]"))?;
     if args.iter().any(|a| a == "--delete") {
-        chatty_lib::secrets::delete(&id)?;
+        chatty_core::secrets::delete(&id)?;
         println!("Keyring-Eintrag {id} gelöscht");
         return Ok(());
     }

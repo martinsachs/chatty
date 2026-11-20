@@ -175,3 +175,5 @@ Consent-Screen „Intern“, Scopes, OAuth-Client Typ „Desktop“, People API 
   (300, Nachladen beim Hochscrollen); Optiken „mirc“ und „dos“ (`src/retro.css`, IRC-Zeilen
   `[hh:mm] <nick> Text`); Checkliste `konzept/ui-pruefung.md`; ADR 08 (native GUI) vorgeschlagen.
   Optiken per Screenshot des eigenen Testfensters geprüft; Kürzen nur per Logiktest, nicht per UI-Scrollen.
+- 2026-11-20 (Auftrag Martin): Kern als `chatty-core` herausgelöst, Prototyp `chatty-native` mit iced
+  (ADR 08: Umfang, Lizenzprüfung, RAM-Untergrenze 18 MB PSS bei unsichtbarem Fenster).

@@ -720,7 +720,7 @@ impl ChatBackend for MattermostBackend {
         tx: EventSender,
         _active: watch::Receiver<Option<String>>,
         _focused: watch::Receiver<bool>,
-    ) -> tauri::async_runtime::JoinHandle<()> {
-        tauri::async_runtime::spawn(ws::run(self, tx))
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(ws::run(self, tx))
     }
 }

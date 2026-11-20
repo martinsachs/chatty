@@ -37,13 +37,13 @@ jobs:
 
       - name: clippy
         working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: test
         working-directory: src-tauri
-        run: cargo test
+        run: cargo test --workspace
 
       # ADR 03: nur ring als Krypto-Provider.
       - name: kein aws-lc-rs
         working-directory: src-tauri
-        run: "! cargo tree --target all -i aws-lc-rs >/dev/null 2>&1"
+        run: "! cargo tree --workspace --target all -i aws-lc-rs >/dev/null 2>&1"

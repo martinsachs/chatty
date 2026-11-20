@@ -1,46 +1,22 @@
-//! App-Zustand, Ereignisschleife und Tauri-Kommandos.
+//! Tauri-Schicht: Kommandos, Ereignisse an die WebView, Dialoge, Fenster und das `avatar://`-Schema.
+//! Die Logik liegt in `chatty_core::App` (ADR 08).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use chatty_core::app::file_name;
+use chatty_core::error::{Error, Result};
+use chatty_core::model::{Account, Attachment, BackendEvent, Message, Page, Space};
+use chatty_core::{App, AppInfo};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
-use tokio::sync::{RwLock, mpsc, watch};
-
-use crate::backend::google::GoogleBackend;
-use crate::backend::mattermost::MattermostBackend;
-use crate::backend::{Avatar, ChatBackend, EventSender};
-use crate::config::{self, Config, GoogleConfig};
-use crate::error::{Error, Result};
-use crate::model::{
-    Account, Attachment, BackendEvent, BackendKind, Message, Page, Space, SpaceKind, UploadFile,
-};
-use crate::secrets;
-use crate::store::Store;
-
-struct Running {
-    backend: Arc<dyn ChatBackend>,
-    active: watch::Sender<Option<String>>,
-    task: tauri::async_runtime::JoinHandle<()>,
-}
 
 pub struct AppState {
-    cfg_dir: PathBuf,
-    config: Mutex<Config>,
-    accounts: Mutex<Vec<Account>>,
-    running: RwLock<HashMap<String, Running>>,
-    store: Mutex<Store>,
-    tx: EventSender,
-    /// Offener Space je Konto (für Benachrichtigungen).
-    active: Mutex<HashMap<String, String>>,
-    /// Profilbilder je "konto/nutzer"; die Zelle lädt jedes Bild nur einmal.
-    avatars: Mutex<HashMap<String, AvatarCell>>,
+    app: Arc<App>,
     /// Im Dialog gewählte Dateien; das Frontend kennt nur IDs und Namen (ADR 06).
     picked: Picked,
-    /// Hat irgendein chatty-Fenster den Fokus? (Google-Polling, Benachrichtigungen; ADR 07)
-    focused: watch::Sender<bool>,
 }
 
 /// Für das Frontend: gewählte Datei ohne Pfad.
@@ -94,112 +70,15 @@ impl Picked {
     }
 }
 
-fn file_name(path: &std::path::Path) -> String {
-    path.file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "datei".into())
-}
-
-type AvatarCell = Arc<tokio::sync::OnceCell<Option<Avatar>>>;
-
-impl AppState {
-    fn store(&self) -> std::sync::MutexGuard<'_, Store> {
-        self.store.lock().unwrap_or_else(|p| p.into_inner())
-    }
-
-    async fn backend(&self, account: &str) -> Result<Arc<dyn ChatBackend>> {
-        self.running
-            .read()
-            .await
-            .get(account)
-            .map(|r| r.backend.clone())
-            .ok_or_else(|| Error::Auth("Konto nicht angemeldet".into()))
-    }
-
-    async fn start(&self, backend: Arc<dyn ChatBackend>) {
-        let id = backend.account().id.clone();
-        let (active, active_rx) = watch::channel(None);
-        let task =
-            backend
-                .clone()
-                .start_events(self.tx.clone(), active_rx, self.focused.subscribe());
-        if let Some(old) = self.running.write().await.insert(
-            id,
-            Running {
-                backend,
-                active,
-                task,
-            },
-        ) {
-            old.task.abort();
-        }
-    }
-
-    fn upsert_account(&self, account: Account) -> Result<()> {
-        let mut list = self.accounts.lock().unwrap_or_else(|p| p.into_inner());
-        match list.iter_mut().find(|a| a.id == account.id) {
-            Some(a) => *a = account,
-            None => list.push(account),
-        }
-        config::save_accounts(&self.cfg_dir, &list)
-    }
-}
-
 /// Erstellt den Zustand und startet die Ereignisschleife sowie die gespeicherten Konten.
-pub fn setup(app: &AppHandle) -> Result<()> {
-    let cfg_dir = config::config_dir()?;
-    let config = config::load_config(&cfg_dir)?;
-    let accounts = config::load_accounts(&cfg_dir)?;
-    let store = Store::open(&config::data_dir()?.join("cache.sqlite"))?;
-    let (tx, rx) = mpsc::unbounded_channel();
-
-    app.manage(AppState {
-        cfg_dir,
-        config: Mutex::new(config.clone()),
-        accounts: Mutex::new(accounts.clone()),
-        running: RwLock::new(HashMap::new()),
-        store: Mutex::new(store),
-        tx,
-        active: Mutex::new(HashMap::new()),
-        avatars: Mutex::new(HashMap::new()),
+pub fn setup(handle: &AppHandle) -> Result<()> {
+    let (app, rx) = App::open()?;
+    handle.manage(AppState {
+        app: app.clone(),
         picked: Picked::default(),
-        focused: watch::channel(true).0,
     });
-
-    tauri::async_runtime::spawn(event_loop(app.clone(), rx));
-
-    for account in accounts {
-        let app = app.clone();
-        let config = config.clone();
-        tauri::async_runtime::spawn(async move {
-            let state = app.state::<AppState>();
-            let result: Result<Arc<dyn ChatBackend>> = match account.kind {
-                BackendKind::Google => match config.google.clone() {
-                    Some(g) => GoogleBackend::restore(account.clone(), g, config.poll.clone())
-                        .await
-                        .map(|b| Arc::new(b) as Arc<dyn ChatBackend>),
-                    None => Err(Error::other("Google-Client fehlt in chatty.toml")),
-                },
-                BackendKind::Mattermost => MattermostBackend::restore(account.clone())
-                    .await
-                    .map(|b| Arc::new(b) as Arc<dyn ChatBackend>),
-            };
-            let event = match result {
-                Ok(b) => {
-                    state.start(b).await;
-                    BackendEvent::Status {
-                        online: true,
-                        detail: None,
-                    }
-                }
-                Err(e) => BackendEvent::Status {
-                    online: false,
-                    detail: Some(e.to_string()),
-                },
-            };
-            let _ = state.tx.send((account.id, event));
-        });
-    }
+    tauri::async_runtime::spawn(event_loop(handle.clone(), app.clone(), rx));
+    tauri::async_runtime::spawn(async move { app.restore_all() });
     Ok(())
 }
 
@@ -209,33 +88,17 @@ struct ChatEvent<'a> {
     event: &'a BackendEvent,
 }
 
-async fn event_loop(app: AppHandle, mut rx: mpsc::UnboundedReceiver<(String, BackendEvent)>) {
+async fn event_loop(handle: AppHandle, app: Arc<App>, mut rx: chatty_core::app::Events) {
     while let Some((account, mut event)) = rx.recv().await {
-        let state = app.state::<AppState>();
-        let cached = {
-            let mut store = state.store();
-            if let BackendEvent::SpaceUpdated { space } = &mut event {
-                let _ = store.apply_flags(&account, std::slice::from_mut(space));
-            }
-            match &event {
-                BackendEvent::MessageCreated { message }
-                | BackendEvent::MessageUpdated { message } => {
-                    store.put_messages(&account, std::slice::from_ref(message))
-                }
-                BackendEvent::MessageDeleted { message_id, .. } => {
-                    store.delete_message(&account, message_id)
-                }
-                BackendEvent::SpaceUpdated { space } => store.put_space(&account, space),
-                BackendEvent::Status { .. } => Ok(()),
-            }
-        };
-        if let Err(e) = cached {
-            eprintln!("Cache: {e}");
+        if let Some(n) = app.handle_event(&account, &mut event) {
+            let _ = handle
+                .notification()
+                .builder()
+                .title(n.title)
+                .body(n.body)
+                .show();
         }
-        if let BackendEvent::MessageCreated { message } = &event {
-            notify(&app, &state, &account, message);
-        }
-        let _ = app.emit(
+        let _ = handle.emit(
             "chat-event",
             ChatEvent {
                 account: &account,
@@ -245,156 +108,40 @@ async fn event_loop(app: AppHandle, mut rx: mpsc::UnboundedReceiver<(String, Bac
     }
 }
 
-/// OS-Benachrichtigung bei DM oder Erwähnung, wenn der Space nicht gerade sichtbar ist.
-fn notify(app: &AppHandle, state: &AppState, account: &str, m: &Message) {
-    if m.mine || m.is_reply && !m.mentions_me {
-        return;
-    }
-    if !state.config.lock().map(|c| c.notifications).unwrap_or(true) {
-        return;
-    }
-    let focused = *state.focused.borrow();
-    let visible = state
-        .active
-        .lock()
-        .map(|a| a.get(account) == Some(&m.space_id))
-        .unwrap_or(false);
-    if focused && visible {
-        return;
-    }
-    let space = state.store().space(account, &m.space_id).ok().flatten();
-    let is_dm = space.as_ref().is_some_and(|s| s.kind != SpaceKind::Channel);
-    let muted = space.as_ref().is_some_and(|s| s.muted);
-    if !(is_dm && !muted || m.mentions_me) {
-        return;
-    }
-    let title = match &space {
-        Some(s) if s.kind == SpaceKind::Channel => format!("{} in {}", m.sender.name, s.name),
-        _ => m.sender.name.clone(),
-    };
-    let body: String = m.text.chars().take(200).collect();
-    let _ = app.notification().builder().title(title).body(body).show();
-}
-
 // ---------- Kommandos ----------
 
 type Cmd<T> = std::result::Result<T, Error>;
 
-#[derive(Serialize)]
-pub struct AppInfo {
-    theme: String,
-    notifications: bool,
-    google_configured: bool,
-    /// Client-ID zum Vorbelegen des Formulars; das Secret geht nicht ans Frontend.
-    google_client_id: String,
-    accounts: Vec<AccountInfo>,
-}
-
-#[derive(Serialize)]
-pub struct AccountInfo {
-    #[serde(flatten)]
-    account: Account,
-    online: bool,
-}
-
 #[tauri::command]
 pub async fn app_info(state: State<'_, AppState>) -> Cmd<AppInfo> {
-    let cfg = state
-        .config
-        .lock()
-        .map_err(|_| Error::other("lock"))?
-        .clone();
-    let accounts = state
-        .accounts
-        .lock()
-        .map_err(|_| Error::other("lock"))?
-        .clone();
-    let running = state.running.read().await;
-    Ok(AppInfo {
-        theme: cfg.theme,
-        notifications: cfg.notifications,
-        google_configured: cfg.google.as_ref().is_some_and(|g| !g.client_id.is_empty()),
-        google_client_id: cfg.google.map(|g| g.client_id).unwrap_or_default(),
-        accounts: accounts
-            .into_iter()
-            .map(|a| AccountInfo {
-                online: running.contains_key(&a.id),
-                account: a,
-            })
-            .collect(),
-    })
+    Ok(state.app.info().await)
 }
 
 #[tauri::command]
 pub fn set_settings(state: State<'_, AppState>, theme: String, notifications: bool) -> Cmd<()> {
-    if !["mattermost", "slack", "ehex", "mirc", "dos"].contains(&theme.as_str()) {
-        return Err(Error::other("Unbekanntes Theme"));
-    }
-    let mut cfg = state.config.lock().map_err(|_| Error::other("lock"))?;
-    cfg.theme = theme;
-    cfg.notifications = notifications;
-    config::save_config(&state.cfg_dir, &cfg)
+    state.app.set_settings(theme, notifications)
 }
 
-/// Google-OAuth-Client setzen und in `chatty.toml` speichern. Leeres Secret behält das bisherige,
-/// leere Client-ID entfernt den Client.
 #[tauri::command]
 pub fn set_google_client(
     state: State<'_, AppState>,
     client_id: String,
     client_secret: String,
 ) -> Cmd<()> {
-    let (client_id, client_secret) = (client_id.trim(), client_secret.trim());
-    let mut cfg = state.config.lock().map_err(|_| Error::other("lock"))?;
-    cfg.google = if client_id.is_empty() {
-        None
-    } else {
-        let old = cfg
-            .google
-            .take()
-            .map(|g| g.client_secret)
-            .unwrap_or_default();
-        Some(GoogleConfig {
-            client_id: client_id.into(),
-            client_secret: if client_secret.is_empty() {
-                old
-            } else {
-                client_secret.into()
-            },
-        })
-    };
-    config::save_config(&state.cfg_dir, &cfg)
-}
-
-fn new_id() -> String {
-    format!("{:016x}", rand::random::<u64>())
+    state.app.set_google_client(&client_id, &client_secret)
 }
 
 #[tauri::command]
 pub async fn add_google_account(
-    app: AppHandle,
     state: State<'_, AppState>,
     account_id: Option<String>,
 ) -> Cmd<Account> {
-    let cfg = state
-        .config
-        .lock()
-        .map_err(|_| Error::other("lock"))?
-        .clone();
-    let google = cfg
-        .google
-        .filter(|g| !g.client_id.is_empty())
-        .ok_or_else(|| Error::other("Google-Client fehlt in chatty.toml (siehe usage.md)"))?;
-    let id = account_id.unwrap_or_else(new_id);
-    let backend = GoogleBackend::login(id, google, cfg.poll, move |url| {
-        let _ = tauri_plugin_opener::open_url(url, None::<&str>);
-    })
-    .await?;
-    let _ = &app;
-    let account = backend.account().clone();
-    state.upsert_account(account.clone())?;
-    state.start(Arc::new(backend)).await;
-    Ok(account)
+    state
+        .app
+        .add_google_account(account_id, |url| {
+            let _ = tauri_plugin_opener::open_url(url, None::<&str>);
+        })
+        .await
 }
 
 #[tauri::command]
@@ -406,38 +153,15 @@ pub async fn add_mattermost_account(
     password: String,
     mfa: Option<String>,
 ) -> Cmd<Account> {
-    let id = account_id.unwrap_or_else(new_id);
-    let mfa = mfa.filter(|m| !m.trim().is_empty());
-    let backend = MattermostBackend::login(
-        id,
-        server.trim_end_matches('/').to_string(),
-        login,
-        password,
-        mfa,
-    )
-    .await?;
-    let account = backend.account().clone();
-    state.upsert_account(account.clone())?;
-    state.start(Arc::new(backend)).await;
-    Ok(account)
+    state
+        .app
+        .add_mattermost_account(account_id, &server, login, password, mfa)
+        .await
 }
 
 #[tauri::command]
 pub async fn remove_account(state: State<'_, AppState>, account: String) -> Cmd<()> {
-    if let Some(r) = state.running.write().await.remove(&account) {
-        r.task.abort();
-    }
-    secrets::delete(&account)?;
-    state.store().delete_account(&account)?;
-    let prefix = format!("{account}/");
-    state
-        .avatars
-        .lock()
-        .map_err(|_| Error::other("lock"))?
-        .retain(|k, _| !k.starts_with(&prefix));
-    let mut list = state.accounts.lock().map_err(|_| Error::other("lock"))?;
-    list.retain(|a| a.id != account);
-    config::save_accounts(&state.cfg_dir, &list)
+    state.app.remove_account(&account).await
 }
 
 #[tauri::command]
@@ -446,16 +170,12 @@ pub async fn browse_spaces(
     account: String,
     query: String,
 ) -> Cmd<Vec<Space>> {
-    state.backend(&account).await?.browse_spaces(&query).await
+    state.app.browse_spaces(&account, &query).await
 }
 
 #[tauri::command]
 pub async fn join_space(state: State<'_, AppState>, account: String, space: String) -> Cmd<Space> {
-    let mut space = state.backend(&account).await?.join_space(&space).await?;
-    let store = state.store();
-    store.apply_flags(&account, std::slice::from_mut(&mut space))?;
-    store.put_space(&account, &space)?;
-    Ok(space)
+    state.app.join_space(&account, &space).await
 }
 
 /// Favorit bzw. Stumm setzen: beim Server, sonst lokal.
@@ -467,55 +187,25 @@ pub async fn set_space_flag(
     favorite: Option<bool>,
     muted: Option<bool>,
 ) -> Cmd<()> {
-    let backend = state.backend(&account).await?;
-    let fav_local = match favorite {
-        Some(on) => !backend.set_favorite(&space, on).await?,
-        None => false,
-    };
-    let mute_local = match muted {
-        Some(on) => !backend.set_muted(&space, on).await?,
-        None => false,
-    };
-    let store = state.store();
-    if fav_local || mute_local {
-        store.set_flag(
-            &account,
-            &space,
-            favorite.filter(|_| fav_local),
-            muted.filter(|_| mute_local),
-        )?;
-    }
-    // Cache sofort angleichen (Benachrichtigungen lesen ihn).
-    if let Some(mut s) = store.space(&account, &space)? {
-        if let Some(f) = favorite {
-            s.favorite = f;
-        }
-        if let Some(m) = muted {
-            s.muted = m;
-        }
-        store.put_space(&account, &s)?;
-    }
-    Ok(())
+    state
+        .app
+        .set_space_flag(&account, &space, favorite, muted)
+        .await
 }
 
-/// Namen eigener Server-Emojis des Kontos (leer, wenn das Backend keine kennt).
 #[tauri::command]
 pub async fn custom_emojis(state: State<'_, AppState>, account: String) -> Cmd<Vec<String>> {
-    state.backend(&account).await?.custom_emojis().await
+    state.app.custom_emojis(&account).await
 }
 
 #[tauri::command]
 pub fn cached_spaces(state: State<'_, AppState>, account: String) -> Cmd<Vec<Space>> {
-    state.store().spaces(&account)
+    state.app.cached_spaces(&account)
 }
 
 #[tauri::command]
 pub async fn list_spaces(state: State<'_, AppState>, account: String) -> Cmd<Vec<Space>> {
-    let mut spaces = state.backend(&account).await?.list_spaces().await?;
-    let mut store = state.store();
-    store.apply_flags(&account, &mut spaces)?;
-    store.put_spaces(&account, &spaces)?;
-    Ok(spaces)
+    state.app.list_spaces(&account).await
 }
 
 #[tauri::command]
@@ -524,7 +214,7 @@ pub fn cached_messages(
     account: String,
     space: String,
 ) -> Cmd<Vec<Message>> {
-    state.store().messages(&account, &space, 50)
+    state.app.cached_messages(&account, &space)
 }
 
 #[tauri::command]
@@ -534,13 +224,7 @@ pub async fn list_messages(
     space: String,
     cursor: Option<String>,
 ) -> Cmd<Page> {
-    let page = state
-        .backend(&account)
-        .await?
-        .list_messages(&space, cursor)
-        .await?;
-    state.store().put_messages(&account, &page.messages)?;
-    Ok(page)
+    state.app.list_messages(&account, &space, cursor).await
 }
 
 #[tauri::command]
@@ -550,11 +234,7 @@ pub async fn list_thread(
     space: String,
     thread: String,
 ) -> Cmd<Vec<Message>> {
-    state
-        .backend(&account)
-        .await?
-        .list_thread(&space, &thread)
-        .await
+    state.app.list_thread(&account, &space, &thread).await
 }
 
 #[tauri::command]
@@ -566,24 +246,12 @@ pub async fn send_message(
     thread: Option<String>,
     files: Vec<u64>,
 ) -> Cmd<Message> {
-    let mut uploads = Vec::new();
-    for path in state.picked.paths(&files)? {
-        let name = file_name(&path);
-        let data = tokio::fs::read(&path).await?;
-        uploads.push(UploadFile {
-            mime: mime_for(&name).into(),
-            name,
-            data,
-        });
-    }
-    let backend = state.backend(&account).await?;
-    let msg = backend
-        .send(&space, &text, thread.as_deref(), uploads)
+    let paths = state.picked.paths(&files)?;
+    let msg = state
+        .app
+        .send(&account, &space, &text, thread.as_deref(), &paths)
         .await?;
     state.picked.remove(&files);
-    state
-        .store()
-        .put_messages(&account, std::slice::from_ref(&msg))?;
     Ok(msg)
 }
 
@@ -626,23 +294,11 @@ pub async fn save_attachment(
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| Error::other(e.to_string()))?;
-    let data = state.backend(&account).await?.download(&attachment).await?;
-    tokio::fs::write(path, data).await?;
+    state
+        .app
+        .save_attachment(&account, &attachment, &path)
+        .await?;
     Ok(true)
-}
-
-fn mime_for(name: &str) -> &'static str {
-    let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-    match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "pdf" => "application/pdf",
-        "txt" | "log" => "text/plain",
-        "zip" => "application/zip",
-        _ => "application/octet-stream",
-    }
 }
 
 #[tauri::command]
@@ -653,15 +309,7 @@ pub async fn edit_message(
     id: String,
     text: String,
 ) -> Cmd<Message> {
-    let msg = state
-        .backend(&account)
-        .await?
-        .edit(&space, &id, &text)
-        .await?;
-    state
-        .store()
-        .put_messages(&account, std::slice::from_ref(&msg))?;
-    Ok(msg)
+    state.app.edit(&account, &space, &id, &text).await
 }
 
 #[tauri::command]
@@ -671,8 +319,7 @@ pub async fn delete_message(
     space: String,
     id: String,
 ) -> Cmd<()> {
-    state.backend(&account).await?.delete(&space, &id).await?;
-    state.store().delete_message(&account, &id)
+    state.app.delete(&account, &space, &id).await
 }
 
 #[tauri::command]
@@ -684,12 +331,7 @@ pub async fn react(
     emoji: String,
     add: bool,
 ) -> Cmd<()> {
-    let b = state.backend(&account).await?;
-    if add {
-        b.react(&space, &id, &emoji).await
-    } else {
-        b.unreact(&space, &id, &emoji).await
-    }
+    state.app.react(&account, &space, &id, &emoji, add).await
 }
 
 #[tauri::command]
@@ -698,12 +340,12 @@ pub async fn search(
     account: String,
     query: String,
 ) -> Cmd<Vec<Message>> {
-    state.backend(&account).await?.search(&query).await
+    state.app.search(&account, &query).await
 }
 
 #[tauri::command]
 pub async fn mark_read(state: State<'_, AppState>, account: String, space: String) -> Cmd<()> {
-    state.backend(&account).await?.mark_read(&space).await
+    state.app.mark_read(&account, &space).await
 }
 
 /// Meldet den offenen Space (Polling-Priorität, Benachrichtigungen).
@@ -713,15 +355,7 @@ pub async fn set_active(
     account: String,
     space: Option<String>,
 ) -> Cmd<()> {
-    if let Ok(mut a) = state.active.lock() {
-        match &space {
-            Some(s) => a.insert(account.clone(), s.clone()),
-            None => a.remove(&account),
-        };
-    }
-    if let Some(r) = state.running.read().await.get(&account) {
-        let _ = r.active.send(space);
-    }
+    state.app.set_active(&account, space).await;
     Ok(())
 }
 
@@ -733,9 +367,7 @@ pub fn window_focus_changed(app: &AppHandle) {
         .values()
         .any(|w| w.is_focused().unwrap_or(false));
     if let Some(state) = app.try_state::<AppState>() {
-        state
-            .focused
-            .send_if_modified(|f| std::mem::replace(f, any) != any);
+        state.app.set_focused(any);
     }
 }
 
@@ -771,7 +403,11 @@ pub fn avatar_protocol(
     let app = ctx.app_handle().clone();
     let path = request.uri().path().trim_start_matches('/').to_string();
     tauri::async_runtime::spawn(async move {
-        let response = match avatar(&app, &path).await {
+        let avatar = match app.try_state::<AppState>() {
+            Some(state) => state.app.avatar(&path).await,
+            None => None,
+        };
+        let response = match avatar {
             Some(a) => tauri::http::Response::builder()
                 .header("Content-Type", a.mime)
                 .header("Cache-Control", "max-age=86400")
@@ -782,43 +418,6 @@ pub fn avatar_protocol(
         };
         responder.respond(response.unwrap_or_default());
     });
-}
-
-/// Pfade: `<konto>/<nutzer>` (Profilbild) oder `<konto>/emoji/<name>` (eigenes Server-Emoji).
-async fn avatar(app: &AppHandle, path: &str) -> Option<Avatar> {
-    let (account, rest) = path.split_once('/')?;
-    let valid = |s: &str, extra: &[char]| {
-        !s.is_empty()
-            && s.chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || extra.contains(&c))
-    };
-    let emoji = rest.strip_prefix("emoji/");
-    let ok = match emoji {
-        Some(name) => valid(name, &['+']),
-        None => valid(rest, &[]),
-    };
-    if !valid(account, &[]) || !ok {
-        return None;
-    }
-    let state = app.state::<AppState>();
-    let cell = state
-        .avatars
-        .lock()
-        .ok()?
-        .entry(path.to_string())
-        .or_default()
-        .clone();
-    // Fehler (z. B. Konto noch nicht angemeldet) werden nicht gemerkt, der nächste Abruf versucht es neu.
-    cell.get_or_try_init(|| async {
-        let backend = state.backend(account).await?;
-        match emoji {
-            Some(name) => backend.custom_emoji(name).await,
-            None => backend.avatar(rest).await,
-        }
-    })
-    .await
-    .ok()?
-    .clone()
 }
 
 #[cfg(test)]

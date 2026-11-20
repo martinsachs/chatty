@@ -3,6 +3,7 @@ name = "chatty"
 version = "0.1.1"
 description = "Server-unabhängiger Desktop-Chatclient (Google Chat, Mattermost)"
 edition = "2024"
+license = "Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,33 +18,21 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+chatty-core = { path = "core" }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1.54.1", features = ["sync", "time", "macros", "rt-multi-thread", "net", "io-util"] }
-# TLS nur mit ring (ADR 03): Provider installiert backend::init_tls().
-reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls-no-provider", "multipart", "http2", "query", "form"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-async-trait = "0.1.92"
-thiserror = "2.0.21"
-toml = "1.2.1"
-dirs = "7.0.0"
-futures-util = "0.3.34"
-url = "2.5.8"
-sha2 = "0.11.1"
-base64 = "0.23.1"
-rand = "0.10.4"
-hex = "0.4.3"
-chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "serde"] }
-rusqlite = { version = "0.43.0", features = ["bundled"] }
-tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
 tauri-plugin-notification = "2.8.1"
 tauri-plugin-dialog = "2.8.4"
 tauri-plugin-updater = "2.14.1"
 tauri-plugin-process = "2.4.0"
-keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1.54.1", features = ["sync"] }
+url = "2.5.8"
+hex = "0.4.3"
 
+[workspace]
+members = [".", "core", "native"]
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
@@ -53,5 +42,3 @@ opt-level = 3
 panic = "abort"
 strip = true
 
-[dev-dependencies]
-tempfile = "3.27.0"

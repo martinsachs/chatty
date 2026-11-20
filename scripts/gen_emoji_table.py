@@ -1,7 +1,7 @@
-"""Erzeugt src-tauri/src/backend/mattermost/emoji_table.rs aus iamcal/emoji-data.
+"""Erzeugt src-tauri/core/src/backend/mattermost/emoji_table.rs aus iamcal/emoji-data.
 
 Aufruf: curl -sfLo /tmp/emoji.json https://raw.githubusercontent.com/iamcal/emoji-data/v15.1.2/emoji.json
-        python3 -I scripts/gen_emoji_table.py /tmp/emoji.json src-tauri/src/backend/mattermost/emoji_table.rs
+        python3 -I scripts/gen_emoji_table.py /tmp/emoji.json src-tauri/core/src/backend/mattermost/emoji_table.rs
 """
 import json, sys
 d = json.load(open(sys.argv[1]))

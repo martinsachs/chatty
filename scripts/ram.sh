@@ -26,12 +26,12 @@ ACCOUNT=chatty-ram-test
 PROFILE=$(mktemp -d)
 cleanup() {
   [ -n "${APP:-}" ] && kill -- -"$APP" 2>/dev/null || true
-  (cd "$ROOT/src-tauri" && cargo run -q --example mm_login -- "$ACCOUNT" --delete >/dev/null 2>&1) || true
+  (cd "$ROOT/src-tauri" && cargo run -q -p chatty-core --example mm_login -- "$ACCOUNT" --delete >/dev/null 2>&1) || true
   rm -rf "$PROFILE"
 }
 trap cleanup EXIT
 
-(cd "$ROOT/src-tauri" && cargo run -q --example mm_login -- "$ACCOUNT" >/dev/null)
+(cd "$ROOT/src-tauri" && cargo run -q -p chatty-core --example mm_login -- "$ACCOUNT" >/dev/null)
 mkdir -p "$PROFILE/config/chatty" "$PROFILE/data"
 cat >"$PROFILE/config/chatty/accounts.json" <<EOF
 [{"id":"$ACCOUNT","kind":"mattermost","server":"$CHATTY_MM_PROXY_URL","label":"ram-test","login":"$CHATTY_MM_USER"}]

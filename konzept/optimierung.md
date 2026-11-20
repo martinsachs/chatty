@@ -1,5 +1,8 @@
 # Analyse und Optimierung (Stand 2026-11-20, v0.1.1)
 
+> Hinweis: Seit ADR 08 liegen Backend, Store, Config und Secrets in `src-tauri/core/src/`, die Beispiele in
+> `src-tauri/core/examples/`. Pfadangaben unten beziehen sich auf den Stand vor dieser Teilung.
+
 ## Ziel
 
 chatty soll mit wenig Speicher laufen, unter Last flüssig bleiben und den Server schonen.

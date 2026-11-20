@@ -537,8 +537,8 @@ impl ChatBackend for GoogleBackend {
         tx: EventSender,
         active_space: watch::Receiver<Option<String>>,
         focused: watch::Receiver<bool>,
-    ) -> tauri::async_runtime::JoinHandle<()> {
-        tauri::async_runtime::spawn(poll::run(self, tx, active_space, focused))
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(poll::run(self, tx, active_space, focused))
     }
 }
 

@@ -106,11 +106,11 @@ pub trait ChatBackend: Send + Sync {
 
     /// Startet Polling bzw. WebSocket. `active_space` ist der gerade offene Space
     /// (Google pollt ihn häufiger). Der Task endet, wenn `tx` geschlossen wird
-    /// oder der Handle abgebrochen wird.
+    /// oder der Handle abgebrochen wird. Aufruf nur innerhalb einer Tokio-Laufzeit.
     fn start_events(
         self: Arc<Self>,
         tx: EventSender,
         active_space: watch::Receiver<Option<String>>,
         focused: watch::Receiver<bool>,
-    ) -> tauri::async_runtime::JoinHandle<()>;
+    ) -> tokio::task::JoinHandle<()>;
 }
