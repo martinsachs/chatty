@@ -1,0 +1,269 @@
+//! Integrationstest gegen einen echten Server (z. B. Docker `mattermost/mattermost-preview`).
+//!
+//! Erwartet zwei Nutzer, die gemeinsam im Kanal "Dev" sind, sowie Umgebungsvariablen
+//! CHATTY_MM_URL, CHATTY_MM_USER, CHATTY_MM_PASSWORD, CHATTY_MM_USER2, CHATTY_MM_PASSWORD2.
+//! Aufruf: `cargo test mattermost::it -- --ignored --nocapture`.
+//! Legt Keyring-Einträge `chatty-it-*` an und löscht sie am Ende wieder.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::sync::{mpsc, watch};
+
+use super::MattermostBackend;
+use crate::backend::ChatBackend;
+use crate::error::{Error, Result};
+use crate::model::{Account, BackendEvent, SpaceKind, UploadFile};
+use crate::secrets;
+
+type Rx = mpsc::UnboundedReceiver<(String, BackendEvent)>;
+
+fn env(key: &str) -> Result<String> {
+    std::env::var(key).map_err(|_| Error::other(format!("{key} fehlt")))
+}
+
+async fn wait_for(
+    rx: &mut Rx,
+    what: &str,
+    pred: impl Fn(&BackendEvent) -> bool,
+) -> Result<BackendEvent> {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        match tokio::time::timeout(left, rx.recv()).await {
+            Ok(Some((_, ev))) if pred(&ev) => {
+                println!("event ok: {what}");
+                return Ok(ev);
+            }
+            Ok(Some(_)) => {}
+            _ => return Err(Error::other(format!("kein Ereignis: {what}"))),
+        }
+    }
+}
+
+fn check(cond: bool, what: &str) -> Result<()> {
+    if cond {
+        println!("ok: {what}");
+        Ok(())
+    } else {
+        Err(Error::other(format!("fehlgeschlagen: {what}")))
+    }
+}
+
+async fn scenario() -> Result<()> {
+    let url = env("CHATTY_MM_URL")?;
+    let me = MattermostBackend::login(
+        "chatty-it-1".into(),
+        format!("{url}/"),
+        env("CHATTY_MM_USER")?,
+        env("CHATTY_MM_PASSWORD")?,
+        None,
+    )
+    .await?;
+    let anna = MattermostBackend::login(
+        "chatty-it-2".into(),
+        url.clone(),
+        env("CHATTY_MM_USER2")?,
+        env("CHATTY_MM_PASSWORD2")?,
+        Some(String::new()),
+    )
+    .await?;
+    println!("login ok: {}", me.account().label);
+
+    // Wiederherstellen mit gespeichertem Token, falsches Token → Auth.
+    let me = Arc::new(MattermostBackend::restore(me.account().clone()).await?);
+    let mut bad: Account = me.account().clone();
+    bad.id = "chatty-it-bad".into();
+    secrets::set(&bad.id, "ungueltig")?;
+    check(
+        matches!(MattermostBackend::restore(bad).await, Err(Error::Auth(_))),
+        "restore mit falschem Token → Auth",
+    )?;
+
+    let spaces = me.list_spaces().await?;
+    println!(
+        "spaces: {:?}",
+        spaces.iter().map(|s| (&s.name, s.kind)).collect::<Vec<_>>()
+    );
+    let dev = spaces
+        .iter()
+        .find(|s| s.name.ends_with("/ Dev"))
+        .ok_or_else(|| Error::other("Kanal Dev fehlt"))?
+        .id
+        .clone();
+    let anna_name = anna.me().await?.name;
+    check(
+        spaces
+            .iter()
+            .any(|s| s.kind == SpaceKind::Direct && s.name == anna_name),
+        "DM mit Partnername",
+    )?;
+    check(
+        spaces
+            .iter()
+            .filter(|s| s.kind == SpaceKind::Direct)
+            .count()
+            == 1,
+        "DMs dedupliziert trotz zwei Teams",
+    )?;
+    me.mark_read(&dev).await?;
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let (_active_tx, active_rx) = watch::channel(None);
+    let task = me.clone().start_events(tx, active_rx);
+    wait_for(&mut rx, "online", |e| {
+        matches!(e, BackendEvent::Status { online: true, .. })
+    })
+    .await?;
+
+    // Fremde Nachricht mit Erwähnung → MessageCreated + SpaceUpdated(unread).
+    let my_name = me.me().await?.name;
+    let incoming = anna
+        .send(&dev, &format!("Hallo @{my_name} zebrafisch"), None, vec![])
+        .await?;
+    let ev = wait_for(
+        &mut rx,
+        "posted",
+        |e| matches!(e, BackendEvent::MessageCreated { message } if message.id == incoming.id),
+    )
+    .await?;
+    if let BackendEvent::MessageCreated { message } = ev {
+        check(
+            message.mentions_me && !message.mine && message.sender.name == anna_name,
+            "posted: mentions_me, Absender",
+        )?;
+    }
+    wait_for(&mut rx, "space unread", |e| {
+        matches!(e, BackendEvent::SpaceUpdated { space } if space.id == dev && space.unread && space.mention_count > 0)
+    })
+    .await?;
+
+    me.mark_read(&dev).await?;
+    wait_for(
+        &mut rx,
+        "channel_viewed",
+        |e| matches!(e, BackendEvent::SpaceUpdated { space } if space.id == dev && !space.unread),
+    )
+    .await?;
+
+    // Eigene Nachricht mit Anhang, Antwort im Thread.
+    let file = UploadFile {
+        name: "hallo.txt".into(),
+        mime: "text/plain".into(),
+        data: b"Inhalt 123".to_vec(),
+    };
+    let root = me.send(&dev, "Wurzel mit Datei", None, vec![file]).await?;
+    check(
+        root.mine && root.attachments.len() == 1 && !root.is_reply,
+        "send mit Anhang",
+    )?;
+    let reply = me
+        .send(&dev, "Antwort", root.thread_id.as_deref(), vec![])
+        .await?;
+    check(
+        reply.is_reply && reply.thread_id == root.thread_id,
+        "Antwort im Thread",
+    )?;
+    let thread = me.list_thread(&dev, &root.id).await?;
+    check(
+        thread.len() == 2 && thread[0].id == root.id && thread[1].id == reply.id,
+        "list_thread aufsteigend",
+    )?;
+    let page = me.list_messages(&dev, None).await?;
+    let listed_root = page.messages.iter().find(|m| m.id == root.id);
+    check(
+        listed_root.is_some_and(|m| m.reply_count == 1),
+        "Hauptverlauf: Wurzel mit reply_count 1",
+    )?;
+    check(
+        !page.messages.iter().any(|m| m.id == reply.id),
+        "Hauptverlauf ohne Antworten",
+    )?;
+    check(
+        page.messages
+            .windows(2)
+            .all(|w| w[0].created <= w[1].created),
+        "Hauptverlauf aufsteigend",
+    )?;
+
+    let data = me.download(&root.attachments[0]).await?;
+    check(data == b"Inhalt 123", "download")?;
+
+    let edited = me.edit(&dev, &root.id, "Wurzel bearbeitet").await?;
+    check(
+        edited.edited.is_some() && edited.text == "Wurzel bearbeitet",
+        "edit",
+    )?;
+    wait_for(
+        &mut rx,
+        "post_edited",
+        |e| matches!(e, BackendEvent::MessageUpdated { message } if message.id == root.id),
+    )
+    .await?;
+
+    for emoji in ["👍", "🤔", "❤️", "🎉"] {
+        me.react(&dev, &root.id, emoji).await?;
+        wait_for(&mut rx, &format!("reaction_added {emoji}"), |e| {
+            matches!(e, BackendEvent::MessageUpdated { message }
+                if message.id == root.id && message.reactions.iter().any(|r| r.emoji == emoji && r.me))
+        })
+        .await?;
+    }
+    anna.react(&dev, &root.id, "👍").await?;
+    wait_for(&mut rx, "reaction count 2", |e| {
+        matches!(e, BackendEvent::MessageUpdated { message }
+            if message.reactions.iter().any(|r| r.emoji == "👍" && r.count == 2 && r.me))
+    })
+    .await?;
+    me.unreact(&dev, &root.id, "👍").await?;
+    wait_for(&mut rx, "reaction_removed", |e| {
+        matches!(e, BackendEvent::MessageUpdated { message }
+            if message.reactions.iter().any(|r| r.emoji == "👍" && r.count == 1 && !r.me))
+    })
+    .await?;
+
+    let hits = me.search("zebrafisch").await?;
+    check(hits.iter().any(|m| m.id == incoming.id), "search")?;
+
+    // Seitenweise laden.
+    for i in 0..55 {
+        anna.send(&dev, &format!("Fülltext {i}"), None, vec![])
+            .await?;
+    }
+    let first = me.list_messages(&dev, None).await?;
+    check(
+        first.messages.len() == 50 && first.next_cursor.is_some(),
+        "Seite 1: 50 + Cursor",
+    )?;
+    let second = me.list_messages(&dev, first.next_cursor.clone()).await?;
+    let oldest_first = first
+        .messages
+        .first()
+        .map(|m| m.created)
+        .unwrap_or_default();
+    check(
+        !second.messages.is_empty() && second.messages.iter().all(|m| m.created <= oldest_first),
+        "Seite 2 älter als Seite 1",
+    )?;
+
+    me.delete(&dev, &root.id).await?;
+    wait_for(
+        &mut rx,
+        "post_deleted",
+        |e| matches!(e, BackendEvent::MessageDeleted { message_id, .. } if *message_id == root.id),
+    )
+    .await?;
+
+    task.abort();
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "braucht laufenden Mattermost-Server"]
+async fn mattermost_end_to_end() -> Result<()> {
+    let result = scenario().await;
+    for id in ["chatty-it-1", "chatty-it-2", "chatty-it-bad"] {
+        secrets::delete(id)?;
+    }
+    result
+}

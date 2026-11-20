@@ -1,0 +1,223 @@
+<script lang="ts">
+  import { api, type AccountInfo } from "$lib/api";
+  import { chat } from "$lib/chat.svelte";
+
+  let { onClose }: { onClose: () => void } = $props();
+
+  let tab = $state<"accounts" | "add-mm" | "settings">(chat.accounts.length ? "accounts" : "add-mm");
+  let theme = $state(chat.theme);
+  let notifications = $state(chat.notifications);
+
+  // Mattermost-Formular; reloginId gesetzt = vorhandenes Konto neu anmelden
+  let reloginId = $state<string | undefined>();
+  let server = $state("https://");
+  let login = $state("");
+  let password = $state("");
+  let mfa = $state("");
+  let busy = $state(false);
+  let error = $state("");
+
+  async function done(promise: Promise<unknown>) {
+    busy = true;
+    error = "";
+    try {
+      await promise;
+      password = "";
+      mfa = "";
+      await chat.refreshInfo();
+      for (const a of chat.accounts) if (!chat.spaces[a.id]) await chat.loadSpaces(a.id);
+      tab = "accounts";
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function addMattermost(e: SubmitEvent) {
+    e.preventDefault();
+    done(api.addMattermost({ accountId: reloginId, server, login, password, mfa: mfa || undefined }));
+  }
+
+  function addGoogle(accountId?: string) {
+    done(api.addGoogle(accountId));
+  }
+
+  function relogin(a: AccountInfo) {
+    if (a.kind === "google") return addGoogle(a.id);
+    reloginId = a.id;
+    server = a.server ?? "https://";
+    login = a.login ?? "";
+    tab = "add-mm";
+  }
+
+  async function remove(a: AccountInfo) {
+    if (!confirm(`Konto ${a.label} entfernen? Token und Cache werden gelöscht.`)) return;
+    await chat.guard(api.removeAccount(a.id));
+    if (chat.account === a.id) {
+      chat.account = null;
+      chat.space = null;
+      chat.messages = [];
+    }
+    delete chat.spaces[a.id];
+    await chat.refreshInfo();
+  }
+
+  async function saveSettings() {
+    await chat.saveSettings(theme, notifications);
+  }
+</script>
+
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<div class="backdrop" onclick={onClose}>
+  <div class="dialog" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
+    <header>
+      <nav>
+        <button class:active={tab === "accounts"} onclick={() => (tab = "accounts")}>Konten</button>
+        <button
+          class:active={tab === "add-mm"}
+          onclick={() => {
+            reloginId = undefined;
+            tab = "add-mm";
+          }}>Konto hinzufügen</button
+        >
+        <button class:active={tab === "settings"} onclick={() => (tab = "settings")}>Darstellung</button>
+      </nav>
+      <button class="icon-btn" title="Schließen" onclick={onClose}>✕</button>
+    </header>
+
+    <div class="content">
+      {#if tab === "accounts"}
+        {#each chat.accounts as a (a.id)}
+          <div class="account">
+            <span class="dot" class:on={a.online}></span>
+            <div class="label">
+              <b>{a.label}</b>
+              <small>{a.kind === "google" ? "Google Chat" : `Mattermost · ${a.server}`}</small>
+            </div>
+            {#if !a.online}<button class="btn secondary" disabled={busy} onclick={() => relogin(a)}>Neu anmelden</button>{/if}
+            <button class="btn secondary" onclick={() => remove(a)}>Entfernen</button>
+          </div>
+        {:else}
+          <p>Noch keine Konten.</p>
+        {/each}
+      {:else if tab === "add-mm"}
+        <h3>Google Chat</h3>
+        {#if chat.googleConfigured}
+          <p>Anmeldung im Browser mit deinem Google-Konto.</p>
+          <button class="btn" disabled={busy} onclick={() => addGoogle()}>Mit Google anmelden</button>
+        {:else}
+          <p class="muted">
+            Kein Google-OAuth-Client konfiguriert. <code>client_id</code> und <code>client_secret</code> in
+            <code>chatty.toml</code> eintragen (siehe usage.md) und chatty neu starten.
+          </p>
+        {/if}
+
+        <h3>{reloginId ? "Mattermost – neu anmelden" : "Mattermost"}</h3>
+        <form onsubmit={addMattermost}>
+          <label class="field">Server-URL<input bind:value={server} required placeholder="https://mattermost.example.org" /></label>
+          <label class="field">Benutzername oder E-Mail<input bind:value={login} required autocomplete="username" /></label>
+          <label class="field">Passwort<input type="password" bind:value={password} required autocomplete="current-password" /></label>
+          <label class="field">MFA-Code (falls aktiv)<input bind:value={mfa} inputmode="numeric" autocomplete="one-time-code" /></label>
+          <button class="btn" disabled={busy}>Anmelden</button>
+        </form>
+      {:else}
+        <label class="field">
+          Optik
+          <select bind:value={theme} onchange={saveSettings}>
+            <option value="mattermost">Mattermost</option>
+            <option value="slack">Slack</option>
+          </select>
+        </label>
+        <label class="check">
+          <input type="checkbox" bind:checked={notifications} onchange={saveSettings} />
+          Desktop-Benachrichtigungen bei Direktnachrichten und Erwähnungen
+        </label>
+      {/if}
+      {#if busy}<p class="muted">Bitte warten … (Google: Anmeldung im Browser abschließen)</p>{/if}
+      {#if error}<p class="error">{error}</p>{/if}
+    </div>
+  </div>
+</div>
+
+<style>
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+  }
+  .dialog {
+    width: 520px;
+    max-height: 85vh;
+    background: var(--center-bg);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 32px rgba(0, 0, 0, 0.2);
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding: 0 12px;
+  }
+  nav button {
+    border: none;
+    background: none;
+    padding: 14px 10px;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+  }
+  nav button.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+  }
+  .content {
+    padding: 16px 24px 24px;
+    overflow-y: auto;
+  }
+  h3 {
+    margin: 12px 0 8px;
+    font-size: 15px;
+  }
+  .account {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .label {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  small,
+  .muted {
+    color: var(--text-muted);
+  }
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #aaa;
+  }
+  .dot.on {
+    background: var(--online);
+  }
+  .check {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .error {
+    color: var(--error);
+  }
+</style>

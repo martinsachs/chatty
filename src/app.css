@@ -1,0 +1,174 @@
+/* Zwei Optiken über CSS-Variablen: data-theme="mattermost" | "slack" am <html>. */
+
+:root,
+:root[data-theme="mattermost"] {
+  --font: "Open Sans", "Segoe UI", system-ui, sans-serif;
+  --rail-bg: #142247;
+  --sidebar-bg: #1e325c;
+  --sidebar-header-bg: #192a4d;
+  --sidebar-text: rgba(255, 255, 255, 0.64);
+  --sidebar-text-strong: #fff;
+  --sidebar-hover: rgba(255, 255, 255, 0.08);
+  --sidebar-active-bg: rgba(255, 255, 255, 0.16);
+  --sidebar-active-bar: #5d89ea;
+  --badge-bg: #ffffff;
+  --badge-text: #1e325c;
+  --mention-bg: #c43133;
+  --center-bg: #ffffff;
+  --text: #3f4350;
+  --text-muted: rgba(63, 67, 80, 0.64);
+  --border: rgba(63, 67, 80, 0.16);
+  --hover: rgba(63, 67, 80, 0.06);
+  --accent: #1c58d9;
+  --accent-text: #ffffff;
+  --link: #386fe5;
+  --mention-text: #386fe5;
+  --mention-highlight: rgba(255, 212, 0, 0.16);
+  --online: #06d6a0;
+  --error: #d24b4e;
+  --avatar-radius: 50%;
+  --channel-prefix: "";
+  --radius: 4px;
+  --header-height: 56px;
+}
+
+:root[data-theme="slack"] {
+  --font: Lato, "Slack-Lato", "Helvetica Neue", system-ui, sans-serif;
+  --rail-bg: #3f0e40;
+  --sidebar-bg: #3f0e40;
+  --sidebar-header-bg: #3f0e40;
+  --sidebar-text: rgba(255, 255, 255, 0.7);
+  --sidebar-text-strong: #fff;
+  --sidebar-hover: #350d36;
+  --sidebar-active-bg: #1164a3;
+  --sidebar-active-bar: transparent;
+  --badge-bg: #cd2553;
+  --badge-text: #fff;
+  --mention-bg: #cd2553;
+  --center-bg: #ffffff;
+  --text: #1d1c1d;
+  --text-muted: #616061;
+  --border: rgba(29, 28, 29, 0.13);
+  --hover: #f8f8f8;
+  --accent: #007a5a;
+  --accent-text: #ffffff;
+  --link: #1264a3;
+  --mention-text: #1264a3;
+  --mention-highlight: #fef6e5;
+  --online: #2bac76;
+  --error: #e01e5a;
+  --avatar-radius: 6px;
+  --channel-prefix: "# ";
+  --radius: 8px;
+  --header-height: 49px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+  background: var(--center-bg);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--link);
+}
+
+code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  color: #c41a16;
+}
+
+pre {
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  overflow-x: auto;
+  margin: 4px 0;
+}
+
+pre code {
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.mention {
+  color: var(--mention-text);
+}
+
+.btn {
+  border: none;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-text);
+  padding: 8px 16px;
+  font-weight: 600;
+}
+
+.btn.secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.icon-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius);
+  padding: 4px 6px;
+  line-height: 1;
+}
+
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.field input,
+.field select {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  background: var(--center-bg);
+}

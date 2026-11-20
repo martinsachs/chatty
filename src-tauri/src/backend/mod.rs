@@ -1,0 +1,64 @@
+//! Schnittstelle zwischen App und Chat-Diensten. Ein Objekt je Konto.
+
+pub mod google;
+pub mod mattermost;
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use tokio::sync::{mpsc, watch};
+
+use crate::error::Result;
+use crate::model::{Account, Attachment, BackendEvent, Message, Page, Space, UploadFile, User};
+
+/// Ereigniskanal: (Konto-ID, Ereignis).
+pub type EventSender = mpsc::UnboundedSender<(String, BackendEvent)>;
+
+#[async_trait]
+pub trait ChatBackend: Send + Sync {
+    fn account(&self) -> &Account;
+
+    /// Angemeldeter Nutzer.
+    async fn me(&self) -> Result<User>;
+
+    async fn list_spaces(&self) -> Result<Vec<Space>>;
+
+    /// Hauptverlauf eines Space (ohne Thread-Antworten). `cursor` aus vorheriger Seite.
+    async fn list_messages(&self, space_id: &str, cursor: Option<String>) -> Result<Page>;
+
+    /// Alle Nachrichten eines Threads inkl. Startnachricht, aufsteigend.
+    async fn list_thread(&self, space_id: &str, thread_id: &str) -> Result<Vec<Message>>;
+
+    async fn send(
+        &self,
+        space_id: &str,
+        text: &str,
+        thread_id: Option<&str>,
+        files: Vec<UploadFile>,
+    ) -> Result<Message>;
+
+    async fn edit(&self, space_id: &str, message_id: &str, text: &str) -> Result<Message>;
+
+    async fn delete(&self, space_id: &str, message_id: &str) -> Result<()>;
+
+    /// `emoji` als Unicode.
+    async fn react(&self, space_id: &str, message_id: &str, emoji: &str) -> Result<()>;
+
+    async fn unreact(&self, space_id: &str, message_id: &str, emoji: &str) -> Result<()>;
+
+    async fn download(&self, attachment: &Attachment) -> Result<Vec<u8>>;
+
+    /// Serverseitige Volltextsuche über alle Spaces des Kontos.
+    async fn search(&self, query: &str) -> Result<Vec<Message>>;
+
+    async fn mark_read(&self, space_id: &str) -> Result<()>;
+
+    /// Startet Polling bzw. WebSocket. `active_space` ist der gerade offene Space
+    /// (Google pollt ihn häufiger). Der Task endet, wenn `tx` geschlossen wird
+    /// oder der Handle abgebrochen wird.
+    fn start_events(
+        self: Arc<Self>,
+        tx: EventSender,
+        active_space: watch::Receiver<Option<String>>,
+    ) -> tauri::async_runtime::JoinHandle<()>;
+}
