@@ -11,6 +11,7 @@
   <a href="https://github.com/martinsachs/chatty/actions/workflows/build.yml"><img alt="Build" src="https://github.com/martinsachs/chatty/actions/workflows/build.yml/badge.svg"></a>
   <a href="LICENSE.txt"><img alt="Lizenz: Apache 2.0" src="https://img.shields.io/badge/Lizenz-Apache%202.0-blue"></a>
   <img alt="Linux, Windows, macOS" src="https://img.shields.io/badge/Linux%20%C2%B7%20Windows%20%C2%B7%20macOS-lightgrey">
+  <a href="#mit-ki-entwickelt"><img alt="Entwickelt mit Claude Code" src="https://img.shields.io/badge/entwickelt%20mit-Claude%20Code-d97757"></a>
 </p>
 
 <p align="center">
@@ -34,10 +35,28 @@ Nostalgie im **mIRC**-Look und als **DOS**-Oberfläche im Stil des Norton Comman
 - 🔄 **Immer aktuell** – signierte Updates mit einem Klick
 - 🆓 **Open Source** – kostenlos, Apache-2.0-Lizenz, für Linux, Windows und macOS
 
-<p align="center">
-  <img src="docs/img/chatty-optiken.png" alt="Optiken Mattermost, mIRC und DOS" width="860">
-  <br><sub>Mattermost · mIRC · DOS – dazu Slack und ehex</sub>
-</p>
+### Fünf Optiken – zur Laufzeit umschaltbar
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/img/optik-mattermost.png" alt="Optik Mattermost" width="420"><br><b>Mattermost</b> – hell und aufgeräumt</td>
+    <td align="center"><img src="docs/img/optik-slack.png" alt="Optik Slack" width="420"><br><b>Slack</b> – Aubergine-Seitenleiste</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/optik-mirc.png" alt="Optik mIRC" width="420"><br><b>mIRC</b> – <code>[12:34] &lt;nick&gt;</code> wie 1998</td>
+    <td align="center"><img src="docs/img/optik-dos.png" alt="Optik DOS" width="420"><br><b>DOS</b> – blaue Panels à la Norton Commander</td>
+  </tr>
+</table>
+
+Oben im Bild: **ehex** – dunkel, in den Farben von ehex.de. Alle Bilder zeigen chatty-native mit Demo-Daten.
+
+### Mit KI entwickelt
+
+chatty ist ein KI-gestütztes Projekt: Code, Tests, Konzepte, Optiken und auch diese Beschreibung sind
+überwiegend mit [Claude Code](https://claude.com/claude-code) (Anthropic) entstanden. Der Maintainer hat
+Anforderungen und Entscheidungen vorgegeben, Ergebnisse geprüft und freigegeben; Commits mit KI-Anteil tragen
+den Vermerk `Co-Authored-By: Claude`. Wie bei jeder Software können Fehler enthalten sein – siehe
+[Lizenz und Rechtliches](#lizenz-und-rechtliches).
 
 ### Herunterladen
 
@@ -158,6 +177,10 @@ Datenschutzbestimmungen ihrer Betreiber.
 **Nutzung der Dienste:** chatty greift über die offiziellen Schnittstellen auf Google Chat und Mattermost zu.
 Beachte die Nutzungsbedingungen der Dienste und die Vorgaben deiner Organisation; für Google Chat richtet ein
 Administrator den OAuth-Zugang ein ([google-setup.md](konzept/google-setup.md)).
+
+**KI-Unterstützung:** Große Teile von Code und Dokumentation wurden mit KI-Werkzeugen (Claude Code)
+erzeugt und vom Maintainer geprüft. Daraus folgt keine zusätzliche Zusicherung; es gelten die obigen
+Hinweise zu Gewährleistung und Haftung.
 
 **Lizenzen Dritter:** chatty nutzt Open-Source-Bibliotheken unter MIT, Apache-2.0, BSD, ISC, Zlib,
 Unicode-3.0 und MPL-2.0 (Prüfung in [ADR 08](adr/08_native_gui.md)). chatty-native enthält die Schrift
