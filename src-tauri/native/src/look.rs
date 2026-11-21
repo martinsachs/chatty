@@ -77,16 +77,24 @@ impl Look {
                 header_text: color!(0x1d1c1d),
                 ..base
             },
+            // ehex.de im Dark Mode: Navy, Blau --color-highlight #5271ff, Grün --color-action #00bd81.
             "ehex" => Look {
                 name: "ehex",
-                text: color!(0x111827),
-                accent: color!(0x5a40dd),
-                mention: color!(0xf726a0),
-                link: color!(0x5a40dd),
-                sidebar_bg: color!(0x1b1442),
-                sidebar_active: color!(0x463a8a),
-                header_bg: color!(0x100b28),
+                bg: color!(0x00051a),
+                text: color!(0xd0d2dd),
+                muted: color!(0x989db3),
+                accent: color!(0x00bd81),
+                mention: color!(0x5271ff),
+                error: color!(0xff6b6b),
+                sidebar_bg: color!(0x13172a),
+                sidebar_text: color!(0xd0d2dd),
+                sidebar_active: color!(0x2b3a7a),
+                header_bg: color!(0x00051a),
                 header_text: color!(0xffffff),
+                composer_bg: color!(0x00051a),
+                link: color!(0x5271ff),
+                code_bg: color!(0x13172a),
+                border: color!(0x343a56),
                 ..base
             },
             "mirc" => Look {

@@ -63,38 +63,49 @@
   --header-height: 49px;
 }
 
-/* Farben von ehex.de: Navy #100b28, Violett #5a40dd, Pink #f726a0, Grautöne Tailwind. */
+/* Farben von ehex.de im Dark Mode (Stand 2026-11-21, styles.css): Navy --color-base-900 #00051a /
+   -800 #13172a / -700 #343a56, Text --color-base-300 #d0d2dd, Blau --color-highlight (dark) #5271ff,
+   Grün --color-action #00bd81 (hell #51e1b4). */
 :root[data-theme="ehex"] {
   --font: Roboto, "Segoe UI", system-ui, sans-serif;
-  --rail-bg: #100b28;
-  --sidebar-bg: #1b1442;
-  --sidebar-header-bg: #160f37;
-  --sidebar-text: rgba(255, 255, 255, 0.66);
-  --sidebar-text-strong: #fff;
-  --sidebar-hover: rgba(255, 255, 255, 0.08);
-  --sidebar-active-bg: rgba(117, 96, 226, 0.35);
-  --sidebar-active-bar: #f726a0;
+  --rail-bg: #00051a;
+  --sidebar-bg: #13172a;
+  --sidebar-header-bg: #00051a;
+  --sidebar-text: rgba(208, 210, 221, 0.75);
+  --sidebar-text-strong: #ffffff;
+  --sidebar-hover: rgba(82, 113, 255, 0.12);
+  --sidebar-active-bg: rgba(82, 113, 255, 0.28);
+  --sidebar-active-bar: #00bd81;
   --brand-line-width: 3px;
-  --brand-line: linear-gradient(90deg, #5a40dd, #5a40dd 30%, #f726a0 70%, #7560e2);
-  --badge-bg: #f726a0;
-  --badge-text: #fff;
-  --mention-bg: #f726a0;
-  --center-bg: #ffffff;
-  --text: #111827;
-  --text-muted: #6b7280;
-  --border: #e5e7eb;
-  --hover: #f9fafb;
-  --accent: #5a40dd;
-  --accent-text: #ffffff;
-  --link: #5a40dd;
-  --mention-text: #5a40dd;
-  --mention-highlight: rgba(247, 38, 160, 0.08);
-  --online: #06d6a0;
-  --error: #dc2626;
+  --brand-line: linear-gradient(90deg, #5271ff, #5271ff 40%, #00bd81 75%, #51e1b4);
+  --badge-bg: #00bd81;
+  --badge-text: #00051a;
+  --mention-bg: #00bd81;
+  --center-bg: #00051a;
+  --text: #d0d2dd;
+  --text-muted: #989db3;
+  --border: rgba(52, 58, 86, 0.9);
+  --hover: #13172a;
+  --accent: #00bd81;
+  --accent-text: #00051a;
+  --link: #5271ff;
+  --mention-text: #5271ff;
+  --mention-highlight: rgba(82, 113, 255, 0.14);
+  --online: #00bd81;
+  --error: #ff6b6b;
   --avatar-radius: 50%;
   --channel-prefix: "";
   --radius: 6px;
   --header-height: 56px;
+}
+
+/* Inline-Code und Schaltflächen im dunklen ehex-Modus lesbar halten. */
+:root[data-theme="ehex"] code {
+  color: #51e1b4;
+}
+
+:root[data-theme="ehex"] .btn:hover:not(:disabled) {
+  background: #51e1b4;
 }
 
 * {
