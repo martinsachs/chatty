@@ -5,9 +5,9 @@ Gesetzt am 2026-11-21 per `gh repo edit` (deutsche Beschreibung, Website, Topics
 
 ## Description (max. 350 Zeichen)
 
-Deutsch:
+Deutsch (gesetzt):
 
-> Alle Chats. Ein Fenster. Kein Ballast. Schlanker Desktop-Client für Google Chat und Mattermost – mehrere Konten, Threads, Reaktionen, Benachrichtigungen, fünf Optiken (auch mIRC und DOS). Für Linux, Windows und macOS, Open Source (Apache 2.0). Inoffizielles Projekt.
+> Alle Chats. Ein Fenster. Kein Ballast. Schlanker Desktop-Client für Google Chat und Mattermost – mehrere Konten, Threads, Reaktionen, Benachrichtigungen, fünf Optiken (auch mIRC und DOS). Linux, Windows, macOS, Open Source (Apache 2.0). Mit Claude Code entwickelt, inoffizielles Projekt.
 
 Englisch (für bessere Auffindbarkeit):
 
@@ -20,7 +20,7 @@ Englisch (für bessere Auffindbarkeit):
 ## Topics
 
 `chat` `desktop-app` `mattermost` `google-chat` `chat-client` `tauri` `iced` `rust` `svelte`
-`cross-platform` `linux` `windows` `macos` `open-source` `retro` `mirc` `lightweight`
+`cross-platform` `linux` `windows` `macos` `open-source` `retro` `mirc` `lightweight` `claude-code` `ai-assisted`
 
 ## Häkchen
 
