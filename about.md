@@ -1,7 +1,7 @@
 # GitHub „About“ für martinsachs/chatty
 
-Kein API-Zugriff aus der Arbeitsumgebung (kein `gh`, kein Token). Werte bitte unter
-**Repository → ⚙ neben „About“** eintragen.
+Gesetzt am 2026-11-21 per `gh repo edit` (deutsche Beschreibung, Website, Topics). Änderungen unter
+**Repository → ⚙ neben „About“** oder erneut per `gh repo edit`.
 
 ## Description (max. 350 Zeichen)
 
