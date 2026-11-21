@@ -26,6 +26,7 @@ offen, mit Grund).
 
 | Funktion (Tauri) | native vorher | Status |
 |---|---|---|
+| Mattermost: Thread-Antworten auch im Hauptverlauf, links mit Balken markiert; Klick auf ↩ öffnet den Thread mit Startnachricht; Antwortzähler aus den geladenen Antworten (Auftrag 2026-11-21) | – | gleich (beide) |
 | Tagestrenner „Heute“, „Gestern“, Datum | fehlte | angeglichen |
 | Gruppierung Folgenachrichten (5 min, gleicher Tag), Uhrzeit beim Überfahren | ohne Tagesgrenze, ohne Uhrzeit | angeglichen |
 | Knopf „↓“ nach unten nach > 300 px Hochscrollen | fehlte | angeglichen |

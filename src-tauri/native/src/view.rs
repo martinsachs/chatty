@@ -328,8 +328,11 @@ fn center(s: &State) -> Element<'_, Message> {
         }
         // Folgenachricht desselben Absenders, gleicher Tag, < 5 min: ohne Kopf und Bild (wie Tauri).
         let compact = !new_day
-            && prev
-                .is_some_and(|p| p.sender.id == m.sender.id && m.created - p.created < 5 * 60_000);
+            && prev.is_some_and(|p| {
+                p.sender.id == m.sender.id
+                    && p.is_reply == m.is_reply
+                    && m.created - p.created < 5 * 60_000
+            });
         list = list.push(message(s, m, false, compact));
         prev = Some(m);
     }
@@ -616,6 +619,16 @@ fn message<'a>(s: &'a State, m: &'a Msg, in_thread: bool, compact: bool) -> Elem
         row![avatar(s, m), content].spacing(10).into()
     } else {
         content.into()
+    };
+    // Thread-Antwort im Hauptverlauf (Mattermost): Balken links, wie Tauri `.msg.reply`.
+    let line: Element<'a, Message> = if m.is_reply && !in_thread {
+        let bar = container(space())
+            .width(3)
+            .height(Length::Fill)
+            .style(move |_| container::background(look.link));
+        row![bar, line].spacing(8).into()
+    } else {
+        line
     };
 
     let mut actions =

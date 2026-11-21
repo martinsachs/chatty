@@ -193,6 +193,7 @@ class Chat {
       if (seq !== this.loadSeq) return;
       const known = new Set(this.messages.map((m) => m.id));
       this.messages = [...page.messages.filter((m) => !known.has(m.id)), ...this.messages];
+      countReplies(this.messages);
       this.cursor = page.next_cursor;
     } catch (e) {
       if (seq === this.loadSeq) this.toast(`Ältere Nachrichten: ${e}`, "error");
@@ -262,12 +263,17 @@ class Chat {
     await this.guard(api.react(this.account, m.space_id, m.id, emoji, add));
   }
 
-  async openThread(root: Message) {
-    if (!this.account || !root.thread_id) return;
+  /** Thread öffnen; aus einer Antwort im Hauptverlauf heraus mit deren Startnachricht. */
+  async openThread(from: Message) {
+    const thread = from.thread_id;
+    if (!this.account || !thread) return;
+    const root = from.is_reply ? (this.messages.find((m) => m.id === thread && !m.is_reply) ?? from) : from;
     this.rhs = { kind: "thread", root, replies: [] };
-    const all = await this.guard(api.listThread(this.account, root.space_id, root.thread_id));
-    if (all && this.rhs?.kind === "thread" && this.rhs.root.id === root.id) {
-      this.rhs.replies = all.filter((m) => m.id !== root.id);
+    const all = await this.guard(api.listThread(this.account, root.space_id, thread));
+    if (all && this.rhs?.kind === "thread" && this.rhs.root.thread_id === thread) {
+      const start = all.find((m) => !m.is_reply) ?? root;
+      this.rhs.root = start;
+      this.rhs.replies = all.filter((m) => m.id !== start.id);
     }
   }
 
@@ -306,11 +312,13 @@ class Chat {
     if (msg.is_reply) {
       // Antwortzähler der Startnachricht erhöhen
       // (jede Antwort nur einmal zählen: kommt nach dem Senden oft noch per Ereignis)
-      if (!created || this.countedReplies.has(msg.id)) return;
-      this.countedReplies.add(msg.id);
-      const root = this.messages.find((m) => m.thread_id && m.thread_id === msg.thread_id && !m.is_reply);
-      if (root) root.reply_count++;
-      return;
+      if (created && !this.countedReplies.has(msg.id)) {
+        this.countedReplies.add(msg.id);
+        const root = this.messages.find((m) => m.thread_id && m.thread_id === msg.thread_id && !m.is_reply);
+        if (root) root.reply_count++;
+      }
+      // Mattermost: Antworten stehen auch im Hauptverlauf (als Antwort markiert), Google nur im Thread.
+      if (this.currentAccount?.kind !== "mattermost") return;
     }
     const i = this.messages.findIndex((m) => m.id === msg.id);
     if (i >= 0) this.messages[i] = msg;
@@ -389,6 +397,20 @@ class Chat {
         });
       }
     }
+  }
+}
+
+/**
+ * Antwortzähler aus den geladenen Antworten (Mattermost: Antworten im Verlauf, `reply_count` liefert der Server
+ * dann nicht). Nur erhöhen, wie `count_replies` im Kern; für eine ältere Seite liegen ihre Antworten in den
+ * neueren, schon geladenen Seiten.
+ */
+function countReplies(messages: Message[]) {
+  const counts = new Map<string, number>();
+  for (const m of messages) if (m.is_reply && m.thread_id) counts.set(m.thread_id, (counts.get(m.thread_id) ?? 0) + 1);
+  for (const m of messages) {
+    const n = !m.is_reply && m.thread_id ? counts.get(m.thread_id) : undefined;
+    if (n && n > m.reply_count) m.reply_count = n;
   }
 }
 

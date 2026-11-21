@@ -141,6 +141,8 @@ Formatierung: `**fett**` bzw. `*fett*`, `_kursiv_`, `~durchgestrichen~`, `` `Cod
   bzw. entfernt deine eigene.
 - Mattermost: Emoji-Reaktionen werden für die gängigen Emoji in Unicode übersetzt, andere als `:name:`
   angezeigt.
+- Mattermost: Thread-Antworten erscheinen auch im Kanalverlauf (Balken links); der Thread-Bereich rechts zeigt
+  sie gesammelt. Google Chat zeigt Antworten nur im Thread-Bereich.
 - Slack als Backend gibt es noch nicht (nur die Optik).
 - `chatty-native`: Favoriten nicht per Ziehen (Favorit/Stumm per Knopf beim Überfahren), keine abgelösten
   Fenster; eigene Server-Emojis nur in Reaktionen als Bild, im Text als `:name:`

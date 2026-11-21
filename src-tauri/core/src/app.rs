@@ -453,8 +453,17 @@ impl App {
 
     // ---------- Nachrichten ----------
 
+    /// Zuletzt gesehener Verlauf aus dem Cache; bei Mattermost mit Thread-Antworten (wie `list_messages`).
     pub fn cached_messages(&self, account: &str, space: &str) -> Result<Vec<Message>> {
-        self.store().messages(account, space, 50)
+        self.store()
+            .messages(account, space, 50, self.inline_replies(account))
+    }
+
+    /// Thread-Antworten stehen im Hauptverlauf (Mattermost); bei Google nur im Thread-Bereich.
+    pub fn inline_replies(&self, account: &str) -> bool {
+        lock(&self.accounts)
+            .iter()
+            .any(|a| a.id == account && a.kind == BackendKind::Mattermost)
     }
 
     pub async fn list_messages(

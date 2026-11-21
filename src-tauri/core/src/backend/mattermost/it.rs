@@ -335,8 +335,10 @@ async fn scenario() -> Result<()> {
         "Hauptverlauf: Wurzel mit reply_count 1",
     )?;
     check(
-        !page.messages.iter().any(|m| m.id == reply.id),
-        "Hauptverlauf ohne Antworten",
+        page.messages
+            .iter()
+            .any(|m| m.id == reply.id && m.is_reply && m.thread_id == root.thread_id),
+        "Hauptverlauf mit Antwort, als Antwort markiert",
     )?;
     check(
         page.messages

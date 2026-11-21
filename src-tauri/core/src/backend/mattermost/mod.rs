@@ -23,6 +23,7 @@ use crate::backend::{Avatar, ChatBackend, EventSender};
 use crate::error::{Error, Result};
 use crate::model::{
     Account, Attachment, BackendKind, Message, Page, Space, SpaceKind, UploadFile, User,
+    count_replies,
 };
 use crate::secrets;
 use api::{
@@ -474,9 +475,11 @@ impl ChatBackend for MattermostBackend {
     }
 
     async fn list_messages(&self, space_id: &str, cursor: Option<String>) -> Result<Page> {
+        // Antworten stehen mit im Hauptverlauf (als Antwort markiert, wie Mattermost ohne „Collapsed Reply
+        // Threads“); der Thread-Bereich zeigt sie zusätzlich gesammelt.
         let mut query = vec![
             ("per_page", PAGE_SIZE.to_string()),
-            ("collapsedThreads", "true".into()),
+            ("collapsedThreads", "false".into()),
         ];
         if let Some(c) = cursor {
             query.push(("before", c));
@@ -488,14 +491,12 @@ impl ChatBackend for MattermostBackend {
         let next_cursor = (list.order.len() >= PAGE_SIZE)
             .then(|| list.order.last().cloned())
             .flatten();
-        let mut posts: Vec<&ApiPost> = list
-            .ordered()
-            .into_iter()
-            .filter(|p| p.root_id.is_empty())
-            .collect();
+        let mut posts: Vec<&ApiPost> = list.ordered().into_iter().collect();
         posts.reverse();
+        let mut messages = self.map_posts(&posts).await?;
+        count_replies(&mut messages);
         Ok(Page {
-            messages: self.map_posts(&posts).await?,
+            messages,
             next_cursor,
         })
     }

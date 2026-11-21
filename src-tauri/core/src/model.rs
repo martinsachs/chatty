@@ -116,6 +116,23 @@ pub struct Message {
     pub mine: bool,
 }
 
+/// Antwortzähler der Startnachrichten aus den mitgeladenen Antworten (Mattermost liefert `reply_count` nur bei
+/// zusammengefassten Threads). Der Verlauf wird lückenlos von der neuesten Nachricht an geladen, daher sind die
+/// Antworten jeder geladenen Startnachricht dabei. Nur erhöhen: Backends mit eigenem Zähler (Google) bleiben gleich.
+pub fn count_replies(messages: &mut [Message]) {
+    let mut counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    for m in messages.iter().filter(|m| m.is_reply) {
+        if let Some(t) = &m.thread_id {
+            *counts.entry(t.clone()).or_default() += 1;
+        }
+    }
+    for m in messages.iter_mut().filter(|m| !m.is_reply) {
+        if let Some(n) = m.thread_id.as_ref().and_then(|t| counts.get(t)) {
+            m.reply_count = m.reply_count.max(*n);
+        }
+    }
+}
+
 /// Seite des Verlaufs, neueste zuerst geladen, `messages` aufsteigend nach Zeit sortiert.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Page {
@@ -154,4 +171,44 @@ pub enum BackendEvent {
         online: bool,
         detail: Option<String>,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn msg(id: &str, thread: &str, reply: bool, count: u32) -> Message {
+        Message {
+            id: id.into(),
+            space_id: "s".into(),
+            thread_id: Some(thread.into()),
+            is_reply: reply,
+            sender: User {
+                id: "u".into(),
+                name: "u".into(),
+                avatar_url: None,
+            },
+            text: String::new(),
+            created: 0,
+            edited: None,
+            reactions: vec![],
+            attachments: vec![],
+            reply_count: count,
+            mentions_me: false,
+            mine: false,
+        }
+    }
+
+    #[test]
+    fn counts_loaded_replies_only_upwards() {
+        let mut m = vec![
+            msg("r", "r", false, 0),
+            msg("a", "r", true, 0),
+            msg("b", "r", true, 0),
+            msg("g", "g", false, 5),
+        ];
+        count_replies(&mut m);
+        assert_eq!(m[0].reply_count, 2);
+        assert_eq!(m[3].reply_count, 5, "eigener Zähler bleibt");
+    }
 }

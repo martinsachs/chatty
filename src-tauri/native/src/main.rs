@@ -528,11 +528,18 @@ impl State {
                 && let Some(root) = self
                     .messages
                     .iter_mut()
-                    .find(|x| x.thread_id.is_some() && x.thread_id == m.thread_id)
+                    .find(|x| !x.is_reply && x.thread_id.is_some() && x.thread_id == m.thread_id)
             {
                 root.reply_count += 1;
             }
-            return task;
+            // Mattermost: Antworten stehen auch im Hauptverlauf (als Antwort markiert), Google nur im Thread.
+            let inline = self
+                .account
+                .as_deref()
+                .is_some_and(|a| self.app.inline_replies(a));
+            if !inline {
+                return task;
+            }
         }
         match self.messages.iter_mut().find(|x| x.id == m.id) {
             Some(x) => *x = m,
@@ -767,6 +774,8 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
                             .collect();
                         msgs.append(&mut s.messages);
                         s.messages = msgs;
+                        // Antworten zu Startnachrichten der älteren Seite liegen in den neueren Seiten.
+                        chatty_core::model::count_replies(&mut s.messages);
                     } else {
                         s.messages = page.messages;
                     }
@@ -1009,28 +1018,42 @@ fn update(s: &mut State, message: Message) -> Task<Message> {
             Ok(()) => Task::none(),
             Err(e) => s.error(e),
         },
-        Message::OpenThread(root) => {
-            let (Some(account), Some(thread)) = (s.account.clone(), root.thread_id.clone()) else {
+        // Aus einer Antwort im Hauptverlauf heraus mit deren Startnachricht (wie Tauri `openThread`).
+        Message::OpenThread(from) => {
+            let (Some(account), Some(thread)) = (s.account.clone(), from.thread_id.clone()) else {
                 return Task::none();
             };
-            let root_id = root.id.clone();
+            let root = if from.is_reply {
+                s.messages
+                    .iter()
+                    .find(|m| !m.is_reply && m.id == thread)
+                    .cloned()
+                    .unwrap_or(from)
+            } else {
+                from
+            };
             let space = root.space_id.clone();
             s.rhs = Some(Rhs::Thread {
                 root,
                 replies: Vec::new(),
             });
             s.thread_composer = text_editor::Content::new();
+            let t = thread.clone();
             s.call(
-                move |app| async move { app.list_thread(&account, &space, &thread).await },
-                move |r| Message::Thread(root_id.clone(), r),
+                move |app| async move { app.list_thread(&account, &space, &t).await },
+                move |r| Message::Thread(thread.clone(), r),
             )
         }
-        Message::Thread(root_id, result) => match result {
+        Message::Thread(thread, result) => match result {
             Ok(all) => {
                 let task = s.prepare(&all);
                 if let Some(Rhs::Thread { root, replies }) = &mut s.rhs
-                    && root.id == root_id
+                    && root.thread_id.as_deref() == Some(thread.as_str())
                 {
+                    if let Some(start) = all.iter().find(|m| !m.is_reply) {
+                        *root = start.clone();
+                    }
+                    let root_id = root.id.clone();
                     *replies = all.into_iter().filter(|m| m.id != root_id).collect();
                 }
                 task

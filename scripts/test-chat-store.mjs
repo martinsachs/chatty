@@ -76,6 +76,15 @@ chat["onEvent"]?.call(chat, { account: "acc", event: { type: "status", online: t
 await wait(20);
 assert.deepEqual(chat.messages.map((m) => m.id), ["B-100", "B-101", "B-102"], "Überlappung → gemischt");
 
+// Mattermost: Thread-Antwort steht im Hauptverlauf, Antwortzähler der Startnachricht steigt einmal.
+const reply = { ...msg("B", 103), is_reply: true, thread_id: "B-101" };
+chat.messages[1].thread_id = "B-101";
+chat["onEvent"]?.call(chat, { account: "acc", event: { type: "message_created", message: reply } });
+chat["onEvent"]?.call(chat, { account: "acc", event: { type: "message_created", message: reply } });
+assert.ok(chat.messages.some((m) => m.id === "B-103" && m.is_reply), "Antwort im Hauptverlauf");
+assert.equal(chat.messages.filter((m) => m.id === "B-103").length, 1, "Antwort nur einmal");
+assert.equal(chat.messages.find((m) => m.id === "B-101").reply_count, 1, "Zähler einmal erhöht");
+
 // S2 (ADR 05): unten angekommen → nur die neuesten `max` bleiben, Cursor = älteste verbliebene.
 chat.messages = [msg("B", 1), msg("B", 2), msg("B", 3), msg("B", 4)];
 chat.trimToWindow(3);

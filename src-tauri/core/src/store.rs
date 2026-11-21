@@ -176,12 +176,21 @@ impl Store {
     }
 
     /// Letzte `limit` Hauptverlaufs-Nachrichten, aufsteigend sortiert.
-    pub fn messages(&self, account: &str, space: &str, limit: i64) -> Result<Vec<Message>> {
+    /// Neueste `limit` Nachrichten eines Space, aufsteigend; `with_replies`: Thread-Antworten mit (Mattermost).
+    pub fn messages(
+        &self,
+        account: &str,
+        space: &str,
+        limit: i64,
+        with_replies: bool,
+    ) -> Result<Vec<Message>> {
         let mut stmt = self.conn.prepare(
-            "SELECT json FROM messages WHERE account = ?1 AND space = ?2 AND is_reply = 0
+            "SELECT json FROM messages WHERE account = ?1 AND space = ?2 AND (?4 OR is_reply = 0)
              ORDER BY created DESC LIMIT ?3",
         )?;
-        let rows = stmt.query_map(params![account, space, limit], |r| r.get::<_, String>(0))?;
+        let rows = stmt.query_map(params![account, space, limit, with_replies], |r| {
+            r.get::<_, String>(0)
+        })?;
         let mut out = Vec::new();
         for json in rows {
             out.push(serde_json::from_str::<Message>(&json?)?);
@@ -283,7 +292,7 @@ mod tests {
         )
         .unwrap();
         let got: Vec<_> = st
-            .messages("a", "s1", 10)
+            .messages("a", "s1", 10, false)
             .unwrap()
             .into_iter()
             .map(|m| m.id)
@@ -291,17 +300,17 @@ mod tests {
         assert_eq!(got, ["m1", "m2"]);
 
         st.delete_message("a", "m1").unwrap();
-        assert_eq!(st.messages("a", "s1", 10).unwrap().len(), 1);
+        assert_eq!(st.messages("a", "s1", 10, false).unwrap().len(), 1);
 
         let many: Vec<_> = (0..KEEP_PER_SPACE + 20)
             .map(|i| msg(&format!("x{i}"), 100 + i, false))
             .collect();
         st.put_messages("a", &many).unwrap();
-        let kept = st.messages("a", "s1", 10_000).unwrap();
+        let kept = st.messages("a", "s1", 10_000, false).unwrap();
         assert_eq!(kept.len() as i64, KEEP_PER_SPACE);
         assert_eq!(kept.last().unwrap().id, format!("x{}", KEEP_PER_SPACE + 19));
 
         st.delete_account("a").unwrap();
-        assert!(st.messages("a", "s1", 10).unwrap().is_empty());
+        assert!(st.messages("a", "s1", 10, false).unwrap().is_empty());
     }
 }

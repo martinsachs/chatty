@@ -14,7 +14,13 @@
   const GROUP_MS = 5 * 60_000;
 
   function compact(prev: Message | undefined, m: Message): boolean {
-    return !!prev && prev.sender.id === m.sender.id && m.created - prev.created < GROUP_MS && day(prev.created) === day(m.created);
+    return (
+      !!prev &&
+      prev.sender.id === m.sender.id &&
+      prev.is_reply === m.is_reply &&
+      m.created - prev.created < GROUP_MS &&
+      day(prev.created) === day(m.created)
+    );
   }
 
   // Bei neuen Nachrichten nach unten scrollen, wenn der Nutzer unten war.

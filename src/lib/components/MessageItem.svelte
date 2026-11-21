@@ -65,7 +65,7 @@
   }
 </script>
 
-<div class="msg" class:compact class:mentioned={m.mentions_me && !m.mine} style:--nick={colorFor(m.sender.name)}>
+<div class="msg" class:compact class:reply={m.is_reply && !inThread} class:mentioned={m.mentions_me && !m.mine} style:--nick={colorFor(m.sender.name)}>
   <div class="gutter">
     {#if compact}
       <span class="hover-time">{time(m.created)}</span>
@@ -154,6 +154,11 @@
     padding: 8px 20px 4px;
     content-visibility: auto;
     contain-intrinsic-size: auto 48px;
+  }
+  /* Thread-Antwort im Hauptverlauf (Mattermost): Balken links. */
+  .msg.reply {
+    border-left: 3px solid var(--link);
+    padding-left: 17px;
   }
   .msg.compact {
     padding-top: 2px;
