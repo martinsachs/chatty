@@ -213,9 +213,15 @@ fn space_item<'a>(s: &'a State, sp: &'a Space) -> Element<'a, Message> {
     } else {
         look.sidebar_text
     };
+    // Retro-Optiken: „*“ vor ungelesenen Kanälen und eigene Farbe (wie Tauri `retro.css`).
+    let (mark, color) = match look.unread {
+        Some(c) if bold => ("* ", c),
+        Some(_) => ("  ", color),
+        None => ("", color),
+    };
     let active = s.space.as_ref() == Some(&sp.id);
     let item = button(
-        text(format!("{icon} {}{status}{badge}", sp.name))
+        text(format!("{mark}{icon} {}{status}{badge}", sp.name))
             .font(look.font(bold))
             .color(color)
             .wrapping(text::Wrapping::None),

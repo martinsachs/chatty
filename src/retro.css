@@ -136,6 +136,18 @@ html:root:is([data-theme="mirc"], [data-theme="dos"]) .composer .hint {
 html:root:is([data-theme="mirc"], [data-theme="dos"]) .center > header .name {
   font-size: inherit;
 }
+/* Ungelesen: Festbreitenschriften haben oft keinen sichtbaren Fettschnitt, daher wie im IRC ein „*“ vor dem
+   Kanal (im linken Innenabstand, die Liste verschiebt sich nicht) plus Farbe je Optik. */
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .sidebar .item {
+  position: relative;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .sidebar .item.unread::before {
+  content: "*";
+  position: absolute;
+  left: 4px;
+  font-weight: bold;
+}
+
 /* Kontokopf: Name und Art in einer Zeile, passt in die niedrige Kopfhöhe. */
 html:root:is([data-theme="mirc"], [data-theme="dos"]) .sidebar > header {
   display: flex;

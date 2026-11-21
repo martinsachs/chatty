@@ -27,6 +27,8 @@ pub struct Look {
     pub border: Color,
     /// Profilbilder neben den Nachrichten (Retro-Optiken: nein).
     pub avatars: bool,
+    /// Retro-Optiken: ungelesene Kanäle mit „*“ und dieser Farbe statt fett (Festbreitenschrift).
+    pub unread: Option<Color>,
 }
 
 pub const NICKS_LIGHT: &[Color] = &[
@@ -64,6 +66,7 @@ impl Look {
             code_bg: color!(0xf0f1f3),
             border: color!(0xdddee2),
             avatars: true,
+            unread: None,
         };
         match name {
             "slack" => Look {
@@ -114,6 +117,7 @@ impl Look {
                 link: color!(0x0000fc),
                 border: color!(0x808080),
                 avatars: false,
+                unread: Some(color!(0xfc0000)),
                 ..base
             },
             "dos" => Look {
@@ -137,6 +141,7 @@ impl Look {
                 code_bg: color!(0x000080),
                 border: color!(0x55ffff),
                 avatars: false,
+                unread: Some(color!(0xffff55)),
             },
             _ => base,
         }

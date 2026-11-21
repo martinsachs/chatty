@@ -18,6 +18,7 @@ offen, mit Grund).
 | Filterfeld; bei Mattermost zusätzlich beitretbare Kanäle vom Server, „Beitreten“ | fehlte | angeglichen |
 | Konten als Leiste mit Initialen, Erwähnungszähler je Konto, Offline-Punkt | Kontoname als Knopf, „(getrennt)“ | angeglichen (Zähler je Konto, „getrennt“) |
 | Favorit/Stumm-Knöpfe beim Überfahren | gleich | gleich |
+| Retro-Optiken (mIRC, DOS): ungelesen mit „*“ vor dem Kanal und Farbe (mIRC rot, DOS gelb), weil Festbreitenschriften kaum fett wirken (Auftrag 2026-11-21) | – | gleich (beide) |
 | Status-Emoji, Erwähnungszähler, Fettdruck ungelesen, Stumm gedämpft | Status nur Unicode | gleich (eigene Server-Emojis als Status: Abweichung, nur Unicode) |
 | Favoriten per Ziehen umsortieren bzw. in/aus Favoriten ziehen | fehlte | Abweichung: iced hat kein Drag&Drop; Favorit per Knopf |
 
