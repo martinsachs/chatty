@@ -1,29 +1,82 @@
-# chatty
+<p align="center">
+  <img src="app-icon.svg" width="96" alt="chatty">
+</p>
 
-Schlanker Desktop-Chatclient für **Google Chat** und **Mattermost**, in der Optik von Mattermost,
-Slack, in ehex-Farben, im mIRC- oder DOS-Stil (umschaltbar). Ein Fenster, mehrere Konten, wenig Speicher.
+<h1 align="center">chatty</h1>
 
-Gebaut mit [Tauri 2](https://tauri.app) (Rust) und Svelte 5. Läuft auf Linux, Windows und macOS.
+<p align="center"><b>Alle Chats. Ein Fenster. Kein Ballast.</b></p>
+
+<p align="center">
+  <a href="https://github.com/martinsachs/chatty/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/martinsachs/chatty"></a>
+  <a href="https://github.com/martinsachs/chatty/actions/workflows/build.yml"><img alt="Build" src="https://github.com/martinsachs/chatty/actions/workflows/build.yml/badge.svg"></a>
+  <a href="LICENSE.txt"><img alt="Lizenz: Apache 2.0" src="https://img.shields.io/badge/Lizenz-Apache%202.0-blue"></a>
+  <img alt="Linux, Windows, macOS" src="https://img.shields.io/badge/Linux%20%C2%B7%20Windows%20%C2%B7%20macOS-lightgrey">
+</p>
+
+<p align="center">
+  <img src="docs/img/chatty-ehex.png" alt="chatty in der Optik ehex (dunkel) mit Kanalliste, Thread-Antworten und Reaktionen" width="860">
+</p>
+
+**chatty** bringt **Google Chat** und **Mattermost** in eine schlanke Desktop-App: alle Konten
+nebeneinander, Benachrichtigungen nur, wenn es dich betrifft. Kein Browser-Tab, der im Hintergrund Speicher
+frisst, kein Wechseln zwischen Fenstern – einfach chatten.
+
+Wähle deinen Stil: aufgeräumt wie **Mattermost** oder **Slack**, dunkel in **ehex**-Farben – oder mit
+Nostalgie im **mIRC**-Look und als **DOS**-Oberfläche im Stil des Norton Commander.
+
+- ⚡ **Leicht und schnell** – wahlweise als native App ganz ohne eingebetteten Browser
+- 💬 **Ein Fenster für alles** – mehrere Konten, Kanäle, Direktnachrichten, Threads und Reaktionen
+- 🔔 **Nichts verpassen** – Desktop-Benachrichtigungen bei Direktnachrichten und Erwähnungen, ungelesene
+  Kanäle auf einen Blick
+- 🔒 **Deine Daten bleiben bei dir** – Zugangsdaten im Schlüsselbund des Betriebssystems, keine Telemetrie,
+  keine Werbung
+- 🎨 **Fünf Optiken** – zur Laufzeit umschaltbar
+- 🔄 **Immer aktuell** – signierte Updates mit einem Klick
+- 🆓 **Open Source** – kostenlos, Apache-2.0-Lizenz, für Linux, Windows und macOS
+
+<p align="center">
+  <img src="docs/img/chatty-optiken.png" alt="Optiken Mattermost, mIRC und DOS" width="860">
+  <br><sub>Mattermost · mIRC · DOS – dazu Slack und ehex</sub>
+</p>
+
+### Herunterladen
+
+Installer für Linux (deb, AppImage, rpm), Windows (Setup, msi) und macOS (dmg) unter
+[**Releases**](https://github.com/martinsachs/chatty/releases/latest). Zwei Varianten mit nahezu gleichem
+Funktionsumfang ([Unterschiede](konzept/drift-native-tauri.md)):
+
+| Variante | Für wen |
+|---|---|
+| **chatty** | Volle Darstellung mit Web-Technik (Tauri), abgelöste Chatfenster, Favoriten per Drag&Drop |
+| **chatty-native** | Minimaler Speicherbedarf, native Oberfläche ohne eingebetteten Browser |
+
+Einrichtung und Bedienung: [usage.md](usage.md).
+
+---
 
 ## Funktionen
 
 - Konten: Google Chat (OAuth-Login im Browser) und Mattermost (Benutzer/Passwort, MFA), beliebig viele
 - Spaces, Kanäle, Direkt- und Gruppennachrichten mit Ungelesen- und Erwähnungsanzeige
-- Lesen, Senden, Bearbeiten, Löschen, Threads (rechte Seitenleiste), Emoji-Reaktionen
+- Lesen, Senden, Bearbeiten, Löschen, Threads (rechte Seitenleiste; bei Mattermost Antworten zusätzlich im
+  Verlauf, mit Balken markiert), Emoji-Reaktionen
 - Dateianhänge hoch- und herunterladen
 - Serverseitige Volltextsuche
 - Popups: Desktop-Benachrichtigungen bei DMs und Erwähnungen, Hinweise im Fenster,
-  Chats in eigenem Fenster (⧉)
+  Chats in eigenem Fenster (⧉, Tauri-Variante)
 - Emojis: Kurzcodes wie `:smile:` im Text, eigene Mattermost-Server-Emojis als Bild, Status-Emoji bei Direktnachrichten
 - Optik Mattermost, Slack, ehex, mIRC oder DOS (Norton Commander)
-- Seitenleiste sortierbar (letzte Nachricht, Name, Anzahl), Favoriten per Drag&Drop, Kanäle stumm schalten
-  (Mattermost: mit dem Server abgeglichen, Google: lokal)
+- Seitenleiste sortierbar (letzte Nachricht, Name, Anzahl), in der Breite ziehbar, Favoriten (Tauri auch per
+  Drag&Drop), Kanäle stumm schalten (Mattermost: mit dem Server abgeglichen, Google: lokal)
 - Signierte automatische Updates über GitHub Releases
 
 Bedienung und Einrichtung: [usage.md](usage.md). Architektur und Entscheidungen:
 [adr/00_plan.md](adr/00_plan.md), [konzept/](konzept/README.md).
 
 ## Wie es funktioniert
+
+Gebaut mit [Tauri 2](https://tauri.app) (Rust) und Svelte 5; die native Variante mit [iced](https://iced.rs).
+Beide teilen denselben Rust-Kern (`chatty-core`).
 
 | | Google Chat | Mattermost |
 |---|---|---|
@@ -78,6 +131,35 @@ Tag `vX.Y.Z` pushen → GitHub Actions baut Installer beider Varianten (deb, App
 `latest.json` bzw. `latest-native.json` und veröffentlicht den Release, sobald alle Plattformen fertig sind. Danach holen
 sich bestehende Installationen das Update. Einrichtung des Signaturschlüssels: [usage.md](usage.md#releases-signieren).
 
-## Lizenz
+## Lizenz und Rechtliches
 
-[Apache License 2.0](LICENSE.txt)
+**Lizenz:** chatty steht unter der [Apache License 2.0](LICENSE.txt). Nutzung, Änderung und Weitergabe –
+auch kommerziell – sind unter deren Bedingungen erlaubt.
+
+**Keine Gewährleistung:** chatty wird unentgeltlich und „wie besehen“ bereitgestellt, ohne Gewährleistung
+oder Garantie jeglicher Art, ausdrücklich oder stillschweigend, etwa für Marktgängigkeit, Eignung für einen
+bestimmten Zweck oder Fehlerfreiheit (Apache 2.0, Abschnitt 7). Die Haftung ist im gesetzlich zulässigen
+Umfang ausgeschlossen (Abschnitt 8); unberührt bleibt die Haftung für Vorsatz und grobe Fahrlässigkeit sowie
+nach zwingendem Recht. Die Nutzung erfolgt auf eigenes Risiko. Es besteht kein Anspruch auf Support,
+Fehlerbehebung oder Weiterentwicklung.
+
+**Marken:** Google Chat, Mattermost, Slack, mIRC, Norton Commander und ehex sind Marken ihrer jeweiligen
+Inhaber. chatty ist ein unabhängiges Projekt, wird von keinem dieser Inhaber herausgegeben, unterstützt oder
+geprüft und steht mit ihnen in keiner geschäftlichen Verbindung. Die Optiken sind eigene Nachempfindungen von
+Farben und Anordnung; fremde Logos oder Grafiken werden nicht verwendet.
+
+**Datenschutz:** chatty enthält keine Telemetrie, keine Werbung und keine Analyse-Dienste. Die App verbindet
+sich nur mit den von dir eingetragenen Chat-Servern (Mattermost-Server, Google-APIs) und zur Prüfung auf
+Updates mit GitHub (dabei sieht GitHub deine IP-Adresse). Anmelde-Token liegen im Schlüsselbund des
+Betriebssystems, Einstellungen und ein Nachrichten-Zwischenspeicher lokal auf deinem Rechner; „Konto
+entfernen“ löscht Token und Zwischenspeicher. Für die Verarbeitung auf den Chat-Servern gelten die
+Datenschutzbestimmungen ihrer Betreiber.
+
+**Nutzung der Dienste:** chatty greift über die offiziellen Schnittstellen auf Google Chat und Mattermost zu.
+Beachte die Nutzungsbedingungen der Dienste und die Vorgaben deiner Organisation; für Google Chat richtet ein
+Administrator den OAuth-Zugang ein ([google-setup.md](konzept/google-setup.md)).
+
+**Lizenzen Dritter:** chatty nutzt Open-Source-Bibliotheken unter MIT, Apache-2.0, BSD, ISC, Zlib,
+Unicode-3.0 und MPL-2.0 (Prüfung in [ADR 08](adr/08_native_gui.md)). chatty-native enthält die Schrift
+Fira Sans (SIL Open Font License 1.1). Die vollständigen Lizenztexte stehen in den Quellpaketen der
+jeweiligen Bibliotheken.
