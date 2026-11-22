@@ -1,7 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <rect width="1024" height="1024" rx="224" fill="#1e325c"/>
-  <path d="M232 300a72 72 0 0 1 72-72h416a72 72 0 0 1 72 72v280a72 72 0 0 1-72 72H468l-150 120v-120h-14a72 72 0 0 1-72-72z" fill="#ffffff"/>
-  <circle cx="384" cy="440" r="44" fill="#1e325c"/>
-  <circle cx="512" cy="440" r="44" fill="#5d89ea"/>
-  <circle cx="640" cy="440" r="44" fill="#1e325c"/>
+  <!-- chatty-App-Icon. Sprechblasen: Phosphor Icons „chats-circle“ (fill), MIT-Lizenz,
+       Copyright (c) 2023 Phosphor Icons, siehe src-tauri/icons/LICENSE-phosphor.txt. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5271ff"/>
+      <stop offset="1" stop-color="#00bd81"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <g transform="translate(192 192) scale(2.5)" fill="#ffffff">
+    <path d="M232.07,186.76a80,80,0,0,0-62.5-114.17A80,80,0,1,0,23.93,138.76l-7.27,24.71a16,16,0,0,0,19.87,19.87l24.71-7.27a80.39,80.39,0,0,0,25.18,7.35,80,80,0,0,0,108.34,40.65l24.71,7.27a16,16,0,0,0,19.87-19.86Zm-16.25,1.47L224,216l-27.76-8.17a8,8,0,0,0-6,.63,64.05,64.05,0,0,1-85.87-24.88A79.93,79.93,0,0,0,174.7,89.71a64,64,0,0,1,41.75,92.48A8,8,0,0,0,215.82,188.23Z"/>
+  </g>
 </svg>

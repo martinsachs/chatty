@@ -66,6 +66,9 @@ fn main() -> iced::Result {
             min_size: Some(MIN_SIZE),
             position: window::Position::Centered,
             visible: false,
+            // App-Icon wie die Tauri-Variante (src-tauri/icons, aus app-icon.svg erzeugt).
+            icon: window::icon::from_file_data(include_bytes!("../../icons/128x128.png"), None)
+                .ok(),
             ..window::Settings::default()
         })
         .run()
@@ -1623,4 +1626,13 @@ fn subscription(s: &State) -> Subscription<Message> {
         }));
     }
     Subscription::batch(subs)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn app_icon_decodes() {
+        let icon = include_bytes!("../../icons/128x128.png");
+        assert!(iced::window::icon::from_file_data(icon, None).is_ok());
+    }
 }

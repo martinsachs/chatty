@@ -184,5 +184,6 @@ Hinweise zu Gewährleistung und Haftung.
 
 **Lizenzen Dritter:** chatty nutzt Open-Source-Bibliotheken unter MIT, Apache-2.0, BSD, ISC, Zlib,
 Unicode-3.0 und MPL-2.0 (Prüfung in [ADR 08](adr/08_native_gui.md)). chatty-native enthält die Schrift
-Fira Sans (SIL Open Font License 1.1). Die vollständigen Lizenztexte stehen in den Quellpaketen der
+Fira Sans (SIL Open Font License 1.1). Das App-Icon nutzt das Symbol „chats-circle“ aus
+[Phosphor Icons](https://phosphoricons.com) (MIT-Lizenz, [Lizenztext](src-tauri/icons/LICENSE-phosphor.txt)). Die vollständigen Lizenztexte stehen in den Quellpaketen der
 jeweiligen Bibliotheken.
