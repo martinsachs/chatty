@@ -8,7 +8,7 @@ use iced::widget::{
     Column, bottom_right, button, checkbox, column, container, hover, image, markdown, mouse_area,
     pick_list, right, row, scrollable, space, stack, text, text_editor, text_input,
 };
-use iced::{Alignment, Element, Length, keyboard, mouse};
+use iced::{Alignment, Color, Element, Length, keyboard, mouse};
 
 use crate::look::Look;
 use crate::prefs::Sort;
@@ -296,11 +296,7 @@ fn center(s: &State) -> Element<'_, Message> {
     };
     let header = container(
         row![
-            text(space.name.clone())
-                .font(look.font(true))
-                .size(16)
-                .color(look.header_text)
-                .width(Length::Fill),
+            topic_header(s, &space.name),
             text_input("Suchen", &s.search)
                 .on_input(Message::SearchInput)
                 .on_submit(Message::Search)
@@ -482,6 +478,36 @@ fn chat_keys(
         }
         _ => Binding::from_key_press(kp),
     }
+}
+
+/// Kanalname, darunter die erste Zeile des Kanal-Headers (Mattermost) mit klickbaren Links.
+fn topic_header<'a>(s: &'a State, name: &str) -> Element<'a, Message> {
+    let look = &s.look;
+    let name = text(name.to_string())
+        .font(look.font(true))
+        .size(16)
+        .color(look.header_text);
+    if s.topic().is_empty() {
+        return container(name).width(Length::Fill).into();
+    }
+    let mut style = look.markdown();
+    style.text_size = 12.into();
+    // Link wie im Verlauf, außer er geht im Kopf unter (mIRC: Blau auf Blau).
+    let lum = |c: Color| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    if (lum(look.link) - lum(look.header_bg)).abs() < 0.3 {
+        style.style.link_color = look.header_text;
+    }
+    let topic = markdown::view(s.topic(), style).map(Message::Link);
+    let fg = look.header_text;
+    column![
+        name,
+        container(topic)
+            .max_height(18)
+            .clip(true)
+            .style(move |_| container::Style::default().color(fg)),
+    ]
+    .width(Length::Fill)
+    .into()
 }
 
 /// Eine Nachricht: Profilbild (je Optik), Kopf, Text, Anhänge, Reaktionen, Antworten; Aktionen beim Überfahren.

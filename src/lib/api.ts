@@ -50,6 +50,8 @@ export interface Space {
   muted: boolean;
   /** Status-Emoji des DM-Partners: Unicode oder ":name:" (eigenes Server-Emoji). */
   status_emoji?: string | null;
+  /** Kanal-Header (Markdown), nur Mattermost. */
+  header?: string;
 }
 
 export interface Reaction {

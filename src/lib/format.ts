@@ -19,7 +19,8 @@ export function formatText(text: string, emojiUrl?: EmojiUrl): string {
   };
   let s = escapeHtml(text)
     .replace(/```(?:[a-z]*\n)?([\s\S]*?)\n?```\n?/g, (_, code) => keep(`<pre><code>${code}</code></pre>`))
-    .replace(/`([^`\n]+)`/g, (_, code) => keep(`<code>${code}</code>`));
+    .replace(/`([^`\n]+)`/g, (_, code) => keep(`<code>${code}</code>`))
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => keep(`<a href="${url}" target="_blank" rel="noreferrer">${label}</a>`));
   if (emojiUrl) {
     s = s.replace(/:([a-z0-9_+-]+):/g, (all, name: string) => {
       const url = emojiUrl(name);

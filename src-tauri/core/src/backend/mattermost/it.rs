@@ -305,6 +305,20 @@ async fn scenario() -> Result<()> {
         "Favorit und Stumm zurückgesetzt",
     )?;
 
+    // Kanal-Header (Titel, Links): per WebSocket (channel_updated) und in der Liste.
+    let header = "Doku: [Wiki](https://example.org/wiki)";
+    me.send_req(
+        me.req(Method::PUT, &format!("/channels/{dev}/patch"))
+            .json(&json!({ "header": header })),
+    )
+    .await?;
+    wait_for(&mut rx, "channel_updated → Header", |e| {
+        matches!(e, BackendEvent::SpaceUpdated { space } if space.id == dev && space.header == header)
+    })
+    .await?;
+    let d = me.list_spaces().await?.into_iter().find(|s| s.id == dev);
+    check(d.is_some_and(|s| s.header == header), "Liste: Header")?;
+
     // Eigene Nachricht mit Anhang, Antwort im Thread.
     let file = UploadFile {
         name: "hallo.txt".into(),

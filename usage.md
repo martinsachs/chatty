@@ -109,6 +109,7 @@ macOS `~/Library/Application Support/chatty`). Er darf gelöscht werden.
 | Favorit | ☆ beim Überfahren des Eintrags, oder Eintrag in „Favoriten“ ziehen; dort per Ziehen ordnen, herausziehen entfernt |
 | Stumm schalten | 🔔 beim Überfahren; stumme Kanäle grau, Benachrichtigung nur bei Erwähnung |
 | Emojis | `:name:` im Text wird zum Emoji (volle Mattermost-Liste); eigene Server-Emojis erscheinen als Bild, auch in Reaktionen; Status-Emoji der Person steht neben der Direktnachricht |
+| Kanal-Header (Mattermost) | erste Zeile unter dem Kanalnamen, Links anklickbar; ganzer Text als Tooltip (Tauri) |
 | Zur neuesten Nachricht | Knopf ↓ unten rechts, sobald hochgescrollt |
 | Alte Direktnachrichten | ohne Nachricht seit 90 Tagen ausgeblendet; über das Filterfeld weiter auffindbar |
 | Senden | Enter; neue Zeile mit Shift+Enter |
@@ -123,7 +124,7 @@ macOS `~/Library/Application Support/chatty`). Er darf gelöscht werden.
 | Ältere Nachrichten | nach oben scrollen |
 
 Formatierung: `**fett**` bzw. `*fett*`, `_kursiv_`, `~durchgestrichen~`, `` `Code` ``,
-` ```Block``` `, Links werden klickbar.
+` ```Block``` `, Links (auch `[Text](https://…)`) werden klickbar.
 
 ### Popups
 

@@ -54,6 +54,9 @@ pub struct Space {
     /// Status-Emoji des DM-Partners (Unicode oder ":name:" für eigene Server-Emojis).
     #[serde(default)]
     pub status_emoji: Option<String>,
+    /// Kanal-Header (Markdown, z. B. Titel und Links); leer, wenn das Backend keinen liefert.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub header: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

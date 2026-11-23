@@ -158,6 +158,8 @@ pub struct State {
     toast_seq: u64,
     /// Geparster Text je Nachrichten-ID.
     pub md: HashMap<String, Vec<markdown::Item>>,
+    /// Erste Zeile des Kanal-Headers (Quelle, geparst) für den Kopf des Verlaufs.
+    topic: (String, Vec<markdown::Item>),
     /// Profilbilder und eigene Emojis je Pfad (`konto/nutzer`, `konto/emoji/name`); `None` = nicht vorhanden.
     pub images: HashMap<String, Option<image::Handle>>,
     pub custom_emojis: HashMap<String, HashSet<String>>,
@@ -303,6 +305,7 @@ fn boot() -> (State, Task<Message>) {
         toasts: Vec::new(),
         toast_seq: 0,
         md: HashMap::new(),
+        topic: (String::new(), Vec::new()),
         images: HashMap::new(),
         custom_emojis: HashMap::new(),
         counted_replies: HashSet::new(),
@@ -337,6 +340,23 @@ fn boot() -> (State, Task<Message>) {
 }
 
 impl State {
+    /// Kanal-Header des offenen Kanals neu parsen, wenn sich seine erste Zeile geändert hat.
+    fn sync_topic(&mut self) {
+        let line = self
+            .current_space()
+            .and_then(|sp| sp.header.lines().map(str::trim).find(|l| !l.is_empty()))
+            .unwrap_or_default();
+        if line != self.topic.0 {
+            let items = markdown::parse(&text::hard_breaks(line)).collect();
+            self.topic = (line.to_string(), items);
+        }
+    }
+
+    /// Geparster Kanal-Header für die Ansicht, leer ohne Header.
+    pub fn topic(&self) -> &[markdown::Item] {
+        &self.topic.1
+    }
+
     pub fn current_space(&self) -> Option<&Space> {
         self.spaces
             .iter()
@@ -657,6 +677,12 @@ impl State {
 }
 
 fn update(s: &mut State, message: Message) -> Task<Message> {
+    let task = handle(s, message);
+    s.sync_topic();
+    task
+}
+
+fn handle(s: &mut State, message: Message) -> Task<Message> {
     match message {
         Message::Info(info) => {
             for a in &info.accounts {

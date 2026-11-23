@@ -16,7 +16,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::tungstenite::protocol::Role;
 
 use super::MattermostBackend;
-use super::api::{ApiPost, ApiUser, text_mentions};
+use super::api::{ApiChannel, ApiPost, ApiUser, text_mentions};
 use crate::backend::EventSender;
 use crate::error::{Error, Result};
 use crate::model::BackendEvent;
@@ -285,6 +285,13 @@ async fn handle(backend: &MattermostBackend, ev: &WsEvent) -> Result<Vec<Backend
                 }]),
                 None => Ok(Vec::new()),
             }
+        }
+        // Kanal geändert, z. B. Header oder Name
+        "channel_updated" => {
+            let ch: ApiChannel = nested(data, "channel")?;
+            Ok(vec![BackendEvent::SpaceUpdated {
+                space: backend.fetch_space(&ch.id).await?,
+            }])
         }
         // Stummschaltung in anderem Client geändert
         "channel_member_updated" => {

@@ -61,6 +61,7 @@ pub struct ApiChannel {
     pub last_post_at: i64,
     pub total_msg_count: i64,
     pub total_msg_count_root: Option<i64>,
+    pub header: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -280,6 +281,7 @@ pub fn map_channel(
         favorite,
         status_emoji: None,
         muted: member.is_some_and(|m| m.notify_props.mark_unread == "mention"),
+        header: ch.header.clone(),
     }
 }
 

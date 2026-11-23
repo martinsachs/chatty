@@ -136,6 +136,22 @@ html:root:is([data-theme="mirc"], [data-theme="dos"]) .composer .hint {
 html:root:is([data-theme="mirc"], [data-theme="dos"]) .center > header .name {
   font-size: inherit;
 }
+/* Kanal-Header wie das IRC-Topic in der Titelzeile: „#kanal: Thema“ in einer Zeile. */
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .center > header .title {
+  flex-direction: row;
+  align-items: baseline;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .center > header .topic {
+  font-size: inherit;
+  color: inherit;
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .center > header .topic::before {
+  content: ":\00a0";
+}
+html:root:is([data-theme="mirc"], [data-theme="dos"]) .center > header .topic a {
+  color: inherit;
+  text-decoration: underline;
+}
 /* Ungelesen: Festbreitenschriften haben oft keinen sichtbaren Fettschnitt, daher wie im IRC ein „*“ vor dem
    Kanal (im linken Innenabstand, die Liste verschiebt sich nicht) plus Farbe je Optik. */
 html:root:is([data-theme="mirc"], [data-theme="dos"]) .sidebar .item {

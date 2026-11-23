@@ -253,6 +253,7 @@ mod tests {
             favorite: false,
             muted: false,
             status_emoji: None,
+            header: String::new(),
         };
         st.put_spaces("a", std::slice::from_ref(&s)).unwrap();
         assert_eq!(st.spaces("a").unwrap(), vec![s.clone()]);
