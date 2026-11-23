@@ -1,5 +1,22 @@
 # Änderungen
 
+## 0.2.3 – 2026-11-23
+
+**Sicherheit** (Details: `konzept/sicherheit.md`)
+- Behoben: HTML-Injection in Nachrichten und Kanal-Header der Tauri-Variante (seit 0.2.2). Eine präparierte
+  Nachricht konnte einen unsichtbaren Link über das ganze Fenster legen. Danke an die meldende Person für
+  Bericht und Patch.
+- Mattermost nur noch über `https://` (`http://` nur für localhost).
+- Selbst-Update der nativen Variante: Schutz gegen Downgrade auf ältere signierte Versionen, nur https,
+  Größenlimit.
+- Release-Pipeline: Actions auf Commit gepinnt, Signaturschlüssel nur noch in zwei abgeschotteten Jobs.
+- Härtungen: Obergrenzen und Timeouts für Downloads und WebSocket, Schutz vor Bild-Bomben (native), kein
+  Markup in Systembenachrichtigungen, Dateinamen ohne Richtungs-Steuerzeichen und Pfade, Konto entfernen
+  meldet die Sitzung beim Server ab, engere Fensterrechte und CSP, Google-Anmeldung robuster gegen lokale
+  Störungen.
+- Abhängigkeiten aktualisiert (`url`, `cookie`), `cargo audit` und `npm audit` in CI.
+- Lücken privat melden: siehe `SECURITY.md`.
+
 ## 0.2.2 – 2026-11-23
 
 **Neu**
