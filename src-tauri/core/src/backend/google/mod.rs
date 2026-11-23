@@ -353,6 +353,10 @@ impl ChatBackend for GoogleBackend {
         &self.account
     }
 
+    async fn logout(&self) -> Result<()> {
+        self.api.tokens.revoke().await
+    }
+
     async fn me(&self) -> Result<User> {
         Ok(self.me.clone())
     }
@@ -496,12 +500,15 @@ impl ChatBackend for GoogleBackend {
         if attachment.id.is_empty() {
             return Err(Error::other("Nur im Browser öffnen"));
         }
+        if !crate::model::path_safe_id(&attachment.id) {
+            return Err(Error::other("Ungültige Anhang-ID"));
+        }
         let url = self.api.chat(&format!("media/{}", attachment.id));
         let resp = self
             .api
             .send(Method::GET, &url, |rb| rb.query(&[("alt", "media")]))
             .await?;
-        Ok(resp.bytes().await?.to_vec())
+        crate::backend::read_limited(resp, crate::backend::MAX_ATTACHMENT).await
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Message>> {

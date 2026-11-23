@@ -236,7 +236,7 @@ pub fn map_post(post: &ApiPost, me: &Me, users: &HashMap<String, ApiUser>) -> Me
             .iter()
             .map(|f| Attachment {
                 id: f.id.clone(),
-                name: f.name.clone(),
+                name: crate::model::safe_file_name(&f.name),
                 mime: (!f.mime_type.is_empty()).then(|| f.mime_type.clone()),
                 size: Some(f.size),
                 url: None,

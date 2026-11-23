@@ -74,7 +74,8 @@ pub fn auth_url(
 }
 
 /// Wertet die erste Zeile des Redirect-Requests aus (`GET /?state=..&code=.. HTTP/1.1`).
-/// `Ok(None)`: kein OAuth-Redirect (z. B. favicon.ico).
+/// `Ok(None)`: kein OAuth-Redirect (z. B. favicon.ico) oder fremder `state` – beides wird ignoriert, damit ein
+/// anderer lokaler Prozess die Anmeldung nicht mit einem falschen Request abbrechen kann.
 pub fn parse_callback(request_line: &str, expected_state: &str) -> Result<Option<String>> {
     let target = request_line.split_whitespace().nth(1).unwrap_or("/");
     let url = url::Url::parse(&format!("http://127.0.0.1{target}"))
@@ -94,7 +95,7 @@ pub fn parse_callback(request_line: &str, expected_state: &str) -> Result<Option
         return Ok(None);
     }
     if state.as_deref() != Some(expected_state) {
-        return Err(Error::Auth("Ungültiger state im Redirect".into()));
+        return Ok(None);
     }
     if let Some(e) = error {
         return Err(Error::Auth(format!("Google meldet: {e}")));
@@ -102,6 +103,8 @@ pub fn parse_callback(request_line: &str, expected_state: &str) -> Result<Option
     code.map(Some)
         .ok_or_else(|| Error::Auth("Kein Code im Redirect".into()))
 }
+
+const CONN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Nimmt Verbindungen an, bis der OAuth-Redirect kommt; antwortet mit einer kleinen Seite.
 pub async fn wait_for_code(
@@ -113,13 +116,21 @@ pub async fn wait_for_code(
         loop {
             let (mut sock, _) = listener.accept().await?;
             let mut buf = Vec::new();
-            let mut chunk = [0u8; 2048];
-            while !buf.windows(2).any(|w| w == b"\r\n") && buf.len() < 16 * 1024 {
-                let n = sock.read(&mut chunk).await?;
-                if n == 0 {
-                    break;
+            // Je Verbindung höchstens kurz warten: eine stumme Verbindung blockiert sonst den Redirect.
+            let read = tokio::time::timeout(CONN_TIMEOUT, async {
+                let mut chunk = [0u8; 2048];
+                while !buf.windows(2).any(|w| w == b"\r\n") && buf.len() < 16 * 1024 {
+                    let n = sock.read(&mut chunk).await?;
+                    if n == 0 {
+                        break;
+                    }
+                    buf.extend_from_slice(&chunk[..n]);
                 }
-                buf.extend_from_slice(&chunk[..n]);
+                Ok::<_, std::io::Error>(())
+            })
+            .await;
+            if !matches!(read, Ok(Ok(()))) {
+                continue;
             }
             let text = String::from_utf8_lossy(&buf);
             let line = text.lines().next().unwrap_or("");
@@ -148,7 +159,8 @@ pub async fn wait_for_code(
         .map_err(|_| Error::Auth("Zeitüberschreitung bei der Google-Anmeldung".into()))?
 }
 
-#[derive(Debug, Deserialize)]
+/// Kein `Debug`: enthält Tokens.
+#[derive(Deserialize)]
 pub struct TokenResponse {
     pub access_token: String,
     #[serde(default)]
@@ -277,6 +289,17 @@ impl Tokens {
         Ok(r.access_token)
     }
 
+    /// Refresh-Token bei Google widerrufen (beim Entfernen des Kontos).
+    pub async fn revoke(&self) -> Result<()> {
+        self.http
+            .post("https://oauth2.googleapis.com/revoke")
+            .form(&[("token", self.refresh_token.as_str())])
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
     /// Nach HTTP 401: Token verwerfen, falls es noch das aktuelle ist.
     pub async fn invalidate(&self, token: &str) {
         let mut cur = self.current.lock().await;
@@ -334,9 +357,10 @@ mod tests {
             parse_callback("GET /favicon.ico HTTP/1.1", "abc").unwrap(),
             None
         );
+        // Fremder state: ignorieren statt abbrechen (lokaler Prozess könnte sonst die Anmeldung stören).
         assert!(matches!(
             parse_callback("GET /?state=xyz&code=c HTTP/1.1", "abc"),
-            Err(Error::Auth(_))
+            Ok(None)
         ));
         assert!(matches!(
             parse_callback("GET /?state=abc&error=access_denied HTTP/1.1", "abc"),
@@ -354,7 +378,7 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let client = tokio::spawn(async move {
             let mut pages = Vec::new();
-            for path in ["/favicon.ico", "/?state=s1&code=c1"] {
+            for path in ["/favicon.ico", "/?state=evil&error=x", "/?state=s1&code=c1"] {
                 let mut s = tokio::net::TcpStream::connect(("127.0.0.1", port))
                     .await
                     .unwrap();
@@ -373,7 +397,8 @@ mod tests {
         assert_eq!(code, "c1");
         let pages = client.await.unwrap();
         assert!(pages[0].starts_with("HTTP/1.1 404"));
-        assert!(pages[1].contains("Anmeldung abgeschlossen"));
+        assert!(pages[1].starts_with("HTTP/1.1 404"));
+        assert!(pages[2].contains("Anmeldung abgeschlossen"));
     }
 
     #[tokio::test]

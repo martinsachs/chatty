@@ -2,6 +2,11 @@ name: release
 
 # Tag v* pushen → Installer beider Varianten (Tauri, nativ) für Linux, Windows, macOS + latest.json bzw.
 # latest-native.json (Updater); nach allen Builds veröffentlicht.
+#
+# Signaturschlüssel (TAURI_SIGNING_PRIVATE_KEY) nur in den Jobs `release` und `native-sign`. Dort laufen
+# außer GitHub-eigenen Actions nur die auf Commit gepinnte tauri-action; keine Caches (Cache-Poisoning aus
+# anderen Läufen), Rust per vorinstalliertem rustup. Die nativen Builds laufen ohne Schlüssel, signiert wird
+# danach in einem eigenen Job.
 on:
   push:
     tags: ["v*"]
@@ -34,16 +39,13 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-          cache: npm
 
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable, 2026-11-23
-        with:
-          toolchain: stable
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: src-tauri
+      - name: Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          if [ "${{ matrix.platform }}" = macos-latest ]; then rustup target add aarch64-apple-darwin x86_64-apple-darwin; fi
 
       - run: npm ci
 
@@ -109,27 +111,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libdbus-1-dev libfuse2
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable, 2026-11-23
-        with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
-
-      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: src-tauri
-          key: native-${{ matrix.target }}
-
-      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
-        with:
-          tool: cargo-packager
-
-      # Nur für `tauri signer sign` (gleicher Schlüssel wie der Tauri-Updater).
-      - run: npm ci
+      - name: Rust und cargo-packager
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+          cargo install cargo-packager --locked --version 0.11.8
 
       - name: Bauen und verpacken
         shell: bash
@@ -138,23 +126,23 @@ jobs:
           cargo build --release -p chatty-native --target ${{ matrix.target }}
           cargo packager --release -p chatty-native --target ${{ matrix.target }} --formats ${{ matrix.formats }}
 
-      - name: Signieren und hochladen
+      # Ohne Schlüssel: unsignierte Updater-Datei und Installer in den Release-Entwurf; `native-sign` signiert.
+      - name: Hochladen
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           OUT=src-tauri/target/${{ matrix.target }}/release
           mkdir -p dist
-          # Updater-Datei: Linux die AppImage, sonst die Binärdatei.
+          # Updater-Datei: Linux die AppImage, sonst die Binärdatei. Version und Plattform im Namen: der Name
+          # landet signiert in der .sig, der Updater prüft ihn (Downgrade-Schutz, native/src/updater.rs).
+          V="${GITHUB_REF_NAME#v}"
           case "${{ runner.os }}" in
-            Linux) SRC=$(ls "$OUT"/*.AppImage); BIN="chatty-native-${{ matrix.key }}.AppImage" ;;
-            Windows) SRC="$OUT/chatty-native.exe"; BIN="chatty-native-${{ matrix.key }}.exe" ;;
-            *) SRC="$OUT/chatty-native"; BIN="chatty-native-${{ matrix.key }}" ;;
+            Linux) SRC=$(ls "$OUT"/*.AppImage); BIN="chatty-native-$V-${{ matrix.key }}.AppImage" ;;
+            Windows) SRC="$OUT/chatty-native.exe"; BIN="chatty-native-$V-${{ matrix.key }}.exe" ;;
+            *) SRC="$OUT/chatty-native"; BIN="chatty-native-$V-${{ matrix.key }}" ;;
           esac
           cp "$SRC" "dist/$BIN"
-          npx tauri signer sign "dist/$BIN"
           for f in "$OUT"/*.deb "$OUT"/*.AppImage "$OUT"/*-setup.exe "$OUT"/*.dmg; do
             [ -f "$f" ] || continue
             case "${{ matrix.key }}" in darwin-x86_64) n="$(basename "${f%.dmg}")-x86_64.dmg"; cp "$f" "dist/$n" ;; *) cp "$f" dist/ ;; esac
@@ -162,39 +150,66 @@ jobs:
           ls -la dist
           gh release upload "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --clobber
 
-  # Updater-Manifest der nativen Variante aus den hochgeladenen Signaturen.
-  native-manifest:
+  # Updater-Dateien der nativen Variante signieren (gleicher Schlüssel wie der Tauri-Updater) und
+  # latest-native.json erzeugen. Nur GitHub-eigene Actions; npm ohne Install-Skripte, nur für `tauri signer`.
+  native-sign:
     needs: native
     runs-on: ubuntu-latest
     steps:
-      - name: latest-native.json
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - run: npm ci --ignore-scripts
+
+      - name: Herunterladen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir sigs
+          V="${GITHUB_REF_NAME#v}"
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir sigs --pattern "chatty-native-$V-*"
+          rm -f sigs/*.sig
+          ls -la sigs
+
+      - name: Signieren
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: for f in sigs/*; do npx tauri signer sign "$f"; done
+
+      - name: latest-native.json und hochladen
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
-          mkdir sigs && cd sigs
-          gh release download "$TAG" --repo "$REPO" --pattern 'chatty-native-*.sig'
+          cd sigs
           python3 - <<'EOF'
           import glob, json, os
           tag, repo = os.environ["TAG"], os.environ["REPO"]
+          prefix = f"chatty-native-{tag.lstrip('v')}-"
           platforms = {}
-          for sig in sorted(glob.glob("chatty-native-*.sig")):
+          for sig in sorted(glob.glob(prefix + "*.sig")):
               asset = sig[:-4]
-              key = asset[len("chatty-native-"):].removesuffix(".exe").removesuffix(".AppImage")
+              key = asset[len(prefix):].removesuffix(".exe").removesuffix(".AppImage")
               platforms[key] = {
                   "url": f"https://github.com/{repo}/releases/download/{tag}/{asset}",
                   "signature": open(sig).read().strip(),
               }
+          if len(platforms) != 4:
+              raise SystemExit(f"erwartet 4 Plattformen, gefunden {sorted(platforms)}")
           json.dump({"version": tag.lstrip("v"), "platforms": platforms}, open("latest-native.json", "w"), indent=2)
           print(open("latest-native.json").read())
           EOF
-          gh release upload "$TAG" latest-native.json --repo "$REPO" --clobber
+          gh release upload "$TAG" *.sig latest-native.json --repo "$REPO" --clobber
 
   # Erst wenn alle Plattformen gebaut und hochgeladen sind: Entwurf veröffentlichen.
   # Danach findet der Updater latest.json unter releases/latest.
   publish:
-    needs: [release, native-manifest]
+    needs: [release, native-sign]
     runs-on: ubuntu-latest
     steps:
       - name: Release veröffentlichen

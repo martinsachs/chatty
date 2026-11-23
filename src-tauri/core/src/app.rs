@@ -215,8 +215,8 @@ impl App {
             _ => m.sender.name.clone(),
         };
         Some(Notification {
-            title,
-            body: m.text.chars().take(200).collect(),
+            title: crate::model::notification_text(&title),
+            body: crate::model::notification_text(&m.text.chars().take(200).collect::<String>()),
         })
     }
 
@@ -371,6 +371,10 @@ impl App {
     pub async fn remove_account(&self, account: &str) -> Result<()> {
         if let Some(r) = self.running.write().await.remove(account) {
             r.task.abort();
+            // Sitzung serverseitig beenden, damit ein abgegriffenes Token nicht weiter gilt.
+            if let Err(e) = r.backend.logout().await {
+                eprintln!("chatty: Abmelden beim Server fehlgeschlagen: {e}");
+            }
         }
         secrets::delete(account)?;
         self.store().delete_account(account)?;

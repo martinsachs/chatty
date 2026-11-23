@@ -304,7 +304,7 @@ pub async fn save_attachment(
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .set_file_name(&attachment.name)
+        .set_file_name(chatty_core::model::safe_file_name(&attachment.name))
         .save_file(move |path| {
             let _ = tx.send(path);
         });
@@ -426,8 +426,21 @@ pub fn avatar_protocol(
             None => None,
         };
         let response = match avatar {
+            // Nur Bildtypen ausliefern (kein text/html oder SVG mit Skript vom Server), kein Sniffing.
             Some(a) => tauri::http::Response::builder()
-                .header("Content-Type", a.mime)
+                .header(
+                    "Content-Type",
+                    if matches!(
+                        a.mime.as_str(),
+                        "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+                    ) {
+                        a.mime.as_str()
+                    } else {
+                        "application/octet-stream"
+                    },
+                )
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "default-src 'none'")
                 .header("Cache-Control", "max-age=86400")
                 .body(a.data),
             None => tauri::http::Response::builder()

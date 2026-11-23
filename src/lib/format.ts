@@ -22,7 +22,7 @@ export function formatText(text: string, emojiUrl?: EmojiUrl): string {
   let s = escapeHtml(text.replace(/\u0000/g, ""))
     .replace(/```(?:[a-z]*\n)?([\s\S]*?)\n?```\n?/g, (_, code) => keep(`<pre><code>${code}</code></pre>`))
     .replace(/`([^`\n]+)`/g, (_, code) => keep(`<code>${code}</code>`))
-    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)\u0000]+)\)/g, (_, label, url) => keep(`<a href="${url}" target="_blank" rel="noreferrer">${label}</a>`));
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)\u0000]+)\)/g, (_, label, url) => keep(`<a href="${url}" title="${url}" target="_blank" rel="noreferrer">${label}</a>`));
   if (emojiUrl) {
     s = s.replace(/:([a-z0-9_+-]+):/g, (all, name: string) => {
       const url = emojiUrl(name);

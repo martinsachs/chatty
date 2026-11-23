@@ -176,9 +176,68 @@ pub enum BackendEvent {
     },
 }
 
+/// Vorschlag für den Speichern-Dialog aus einem vom Absender bestimmten Dateinamen: nur der letzte Teil,
+/// ohne Steuer- und Bidi-Zeichen (z. B. U+202E, das `rechnung<RLO>fdp.exe` als „…exe.pdf“ zeigt), ohne
+/// führende Punkte (versteckte Dateien wie `.bashrc`).
+pub fn safe_file_name(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or_default();
+    let clean: String = base
+        .chars()
+        .filter(|c| !c.is_control() && !matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'))
+        .collect();
+    let clean = clean.trim().trim_start_matches('.').trim();
+    if clean.is_empty() {
+        "anhang".into()
+    } else {
+        clean.into()
+    }
+}
+
+/// Text für OS-Benachrichtigungen: Linux-Benachrichtigungsdienste werten teils Markup aus (`<a href>`,
+/// `<img>`); spitze Klammern aus Absendertext daher ersetzen.
+pub fn notification_text(s: &str) -> String {
+    s.replace('<', "‹").replace('>', "›")
+}
+
+/// Vom Server gelieferte IDs, die in einen API-Pfad eingesetzt werden: keine Pfad- oder Query-Teile.
+pub fn path_safe_id(id: &str) -> bool {
+    !id.is_empty()
+        && !id.contains("..")
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '/' | '.' | '=' | '+'))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_names_are_sanitised() {
+        assert_eq!(safe_file_name("bericht.pdf"), "bericht.pdf");
+        assert_eq!(safe_file_name("../../.bashrc"), "bashrc");
+        assert_eq!(safe_file_name("a\\b\\c.txt"), "c.txt");
+        assert_eq!(safe_file_name("rechnung\u{202e}fdp.exe"), "rechnungfdp.exe");
+        assert_eq!(safe_file_name("\n"), "anhang");
+    }
+
+    #[test]
+    fn ids_without_path_tricks() {
+        assert!(path_safe_id("abc123"));
+        assert!(path_safe_id("spaces/A/messages/B/attachments/C=="));
+        assert!(!path_safe_id("../users/me"));
+        assert!(!path_safe_id("x?y=1"));
+        assert!(!path_safe_id("x#y"));
+        assert!(!path_safe_id(""));
+    }
+
+    #[test]
+    fn notification_without_markup() {
+        assert_eq!(
+            notification_text("<a href=\"x\">y</a>"),
+            "‹a href=\"x\"›y‹/a›"
+        );
+    }
 
     fn msg(id: &str, thread: &str, reply: bool, count: u32) -> Message {
         Message {

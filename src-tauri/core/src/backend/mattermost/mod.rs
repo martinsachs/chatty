@@ -65,6 +65,8 @@ fn http_client() -> Result<Client> {
     Ok(Client::builder()
         .http1_only()
         .connect_timeout(CONNECT_TIMEOUT)
+        // Stockende Antworten (z. B. tröpfelnder Download) nicht ewig offen halten.
+        .read_timeout(std::time::Duration::from_secs(60))
         .user_agent(concat!("chatty/", env!("CARGO_PKG_VERSION")))
         .build()?)
 }
@@ -597,10 +599,13 @@ impl ChatBackend for MattermostBackend {
     }
 
     async fn download(&self, attachment: &Attachment) -> Result<Vec<u8>> {
+        if !attachment.id.chars().all(|c| c.is_ascii_alphanumeric()) || attachment.id.is_empty() {
+            return Err(Error::other("Ungültige Datei-ID"));
+        }
         let resp = self
             .send_file_req(self.req(Method::GET, &format!("/files/{}", attachment.id)))
             .await?;
-        Ok(resp.bytes().await?.to_vec())
+        crate::backend::read_limited(resp, crate::backend::MAX_ATTACHMENT).await
     }
 
     async fn browse_spaces(&self, query: &str) -> Result<Vec<Space>> {
@@ -653,9 +658,15 @@ impl ChatBackend for MattermostBackend {
             .unwrap_or("image/png")
             .to_string();
         Ok(Some(Avatar {
-            data: resp.bytes().await?.to_vec(),
+            data: crate::backend::read_limited(resp, crate::backend::MAX_IMAGE).await?,
             mime,
         }))
+    }
+
+    async fn logout(&self) -> Result<()> {
+        self.send_req(self.req(Method::POST, "/users/logout"))
+            .await?;
+        Ok(())
     }
 
     async fn custom_emojis(&self) -> Result<Vec<String>> {
@@ -676,7 +687,7 @@ impl ChatBackend for MattermostBackend {
             .unwrap_or("image/png")
             .to_string();
         Ok(Some(Avatar {
-            data: resp.bytes().await?.to_vec(),
+            data: crate::backend::read_limited(resp, crate::backend::MAX_IMAGE).await?,
             mime,
         }))
     }

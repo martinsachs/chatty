@@ -1,6 +1,6 @@
 [package]
 name = "chatty-native"
-version = "0.2.2"
+version = "0.2.3"
 description = "chatty mit nativer Oberfläche (iced, ohne WebView), ADR 08"
 edition = "2024"
 license = "Apache-2.0"
@@ -8,6 +8,7 @@ license = "Apache-2.0"
 [dependencies]
 chatty-core = { path = "../core" }
 # Software-Renderer (tiny-skia) statt wgpu: kein GPU-Treiber im Prozess, weniger Speicher.
+img = { package = "image", version = "0.25.10", default-features = false }
 iced = { version = "0.14", default-features = false, features = ["tiny-skia", "x11", "wayland", "tokio", "thread-pool", "markdown", "image"] }
 tokio = { version = "1.54.1", features = ["sync", "time"] }
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }

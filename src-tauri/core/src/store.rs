@@ -28,6 +28,7 @@ impl Store {
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA synchronous=NORMAL;
+             PRAGMA secure_delete=ON;
              CREATE TABLE IF NOT EXISTS spaces (
                  account TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL,
                  PRIMARY KEY (account, id));

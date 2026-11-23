@@ -13,7 +13,11 @@ const emoji = (name) => (name === "party" ? "avatar://localhost/a/emoji/party" :
 const link = (url, label = url) => `<a href="${url}" target="_blank" rel="noreferrer">${label}</a>`;
 
 assert.equal(formatText("siehe https://x.de/a."), `siehe ${link("https://x.de/a")}.`);
-assert.equal(formatText("[Doku](https://x.de/d)"), link("https://x.de/d", "Doku"));
+// Markdown-Link: Ziel als Tooltip, damit ein irreführender Text („[https://bank.de](https://evil)“) auffällt.
+assert.equal(
+  formatText("[Doku](https://x.de/d)"),
+  '<a href="https://x.de/d" title="https://x.de/d" target="_blank" rel="noreferrer">Doku</a>',
+);
 assert.equal(formatText("**fett** _kursiv_ `a<b`"), "<strong>fett</strong> <em>kursiv</em> <code>a&lt;b</code>");
 assert.equal(formatText("hi @anna\nzwei"), 'hi <span class="mention">@anna</span><br>zwei');
 assert.equal(
@@ -35,6 +39,25 @@ for (const text of attacks) {
   }
   assert.ok(!/\sstyle=/.test(html), `style-Attribut eingeschleust: ${html}`);
   assert.ok(!html.includes("undefined"), `gefälschter Platzhalter: ${html}`);
+}
+
+// Fuzzing mit festem Seed: jedes erzeugte Tag muss auf der Whitelist stehen (Pentest 2026-11-23).
+const allowed = [
+  /^<\/?(strong|em|del|code|pre|br)>$/, /^<\/a>$/, /^<span class="mention">$/, /^<\/span>$/,
+  /^<a href="https?:\/\/[^"<>]*"( title="https?:\/\/[^"<>]*")? target="_blank" rel="noreferrer">$/,
+  /^<img class="emoji" src="avatar:\/\/localhost\/a\/emoji\/party" alt=":[a-z0-9_+-]+:" title=":[a-z0-9_+-]+:">$/,
+];
+const alpha = ["https://", "http://x.de/", "[", "]", "(", ")", "`", "```", "*", "**", "_", "~", "~~", "@a", ":party:",
+  ":x:", '"', "'", "<", ">", "&", " ", "\n", "x", "\u0000", "0", "/", ".", "javascript:", "=", "#", "%22", "\u202e"];
+let seed = 42;
+const rnd = (n) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) % n);
+for (let i = 0; i < 50_000; i++) {
+  let text = "";
+  for (let k = 1 + rnd(12); k > 0; k--) text += alpha[rnd(alpha.length)];
+  const html = formatText(text, emoji);
+  for (const tag of html.match(/<[^>]*>?/g) ?? []) {
+    assert.ok(allowed.some((r) => r.test(tag)), `unerlaubtes Tag ${tag} aus ${JSON.stringify(text)}`);
+  }
 }
 
 console.log("format: ok");

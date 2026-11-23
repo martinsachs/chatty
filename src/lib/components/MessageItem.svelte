@@ -56,13 +56,6 @@
     }
   }
 
-  function linkClick(e: MouseEvent) {
-    const a = (e.target as HTMLElement).closest("a");
-    if (a?.href) {
-      e.preventDefault();
-      openUrl(a.href);
-    }
-  }
 </script>
 
 <div class="msg" class:compact class:reply={m.is_reply && !inThread} class:mentioned={m.mentions_me && !m.mine} style:--nick={colorFor(m.sender.name)}>
@@ -86,8 +79,7 @@
       <textarea class="edit" bind:value={draft} onkeydown={editKey} autofocus rows="3"></textarea>
       <div class="edit-hint">Enter speichert · Esc bricht ab</div>
     {:else}
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <div class="text" onclick={linkClick}>
+      <div class="text">
         {@html formatText(m.text, (n) => chat.emojiUrl(chat.account, n))}{#if m.edited}<span class="edited"> (bearbeitet)</span>{/if}
       </div>
     {/if}

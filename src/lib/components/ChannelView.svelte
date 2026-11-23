@@ -2,7 +2,6 @@
   import { tick } from "svelte";
   import { api, type Message } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
-  import { openUrl } from "@tauri-apps/plugin-opener";
   import { day, formatText } from "$lib/format";
   import Composer from "./Composer.svelte";
   import MessageItem from "./MessageItem.svelte";
@@ -83,13 +82,6 @@
   // Kanal-Header: erste Zeile im Kopf, ganzer Text als Tooltip.
   const header = $derived(chat.currentSpace?.header?.trim() ?? "");
 
-  function linkClick(e: MouseEvent) {
-    const a = (e.target as HTMLElement).closest("a");
-    if (a?.href) {
-      e.preventDefault();
-      openUrl(a.href);
-    }
-  }
 
   function searchKey(e: KeyboardEvent) {
     if (e.key === "Enter") chat.search(query);
@@ -103,8 +95,7 @@
         {chat.currentSpace?.name ?? ""}
       </div>
       {#if header}
-        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-        <div class="topic" title={header} onclick={linkClick}>
+        <div class="topic" title={header}>
           {@html formatText(header.split("\n")[0], (n) => chat.emojiUrl(chat.account, n))}
         </div>
       {/if}

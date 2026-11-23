@@ -354,7 +354,7 @@ fn map_attachment(a: &GAttachment) -> Attachment {
     };
     Attachment {
         id,
-        name: a.content_name.clone(),
+        name: crate::model::safe_file_name(&a.content_name),
         mime: Some(a.content_type.clone()).filter(|m| !m.is_empty()),
         size: None,
         url,

@@ -5,7 +5,11 @@
 //! aktualisiert die Paketverwaltung.
 //!
 //! Manifest:
-//! `{"version":"0.2.0","platforms":{"linux-x86_64":{"url":"…","signature":"<Base64 der .sig>"},…}}`
+//! `{"version":"0.2.3","platforms":{"linux-x86_64":{"url":"…","signature":"<Base64 der .sig>"},…}}`
+//!
+//! Downgrade-Schutz: Der signierte Kommentar der Signatur nennt den Dateinamen
+//! (`file:chatty-native-<version>-<plattform>[.exe|.AppImage]`). Er muss zu Version und Plattform aus dem
+//! Manifest passen, sonst ließe sich eine alte, gültig signierte Datei als neue Version ausliefern.
 
 use std::collections::HashMap;
 
@@ -14,6 +18,8 @@ use serde::Deserialize;
 
 const MANIFEST: &str =
     "https://github.com/martinsachs/chatty/releases/latest/download/latest-native.json";
+/// Obergrenze für die Update-Datei (AppImage ~40 MiB); schützt vor Speicherfluten vor der Signaturprüfung.
+const MAX_UPDATE: usize = 300 << 20;
 /// Öffentlicher Schlüssel aus `tauri.conf.json` (eine Quelle für beide Varianten).
 const TAURI_CONF: &str = include_str!("../../tauri.conf.json");
 
@@ -90,22 +96,46 @@ fn decode_key(b64: &str) -> Result<minisign_verify::PublicKey, String> {
     minisign_verify::PublicKey::decode(&b64_text(b64)?).map_err(|e| e.to_string())
 }
 
-fn verify(key: &minisign_verify::PublicKey, data: &[u8], sig_b64: &str) -> Result<(), String> {
+/// Prüft Signatur und signierten Kommentar; liefert den signierten Dateinamen.
+fn verify(key: &minisign_verify::PublicKey, data: &[u8], sig_b64: &str) -> Result<String, String> {
     let sig = minisign_verify::Signature::decode(&b64_text(sig_b64)?).map_err(|e| e.to_string())?;
     key.verify(data, &sig, false)
-        .map_err(|e| format!("Signatur ungültig: {e}"))
+        .map_err(|e| format!("Signatur ungültig: {e}"))?;
+    sig.trusted_comment()
+        .split('\t')
+        .find_map(|p| p.strip_prefix("file:"))
+        .map(str::to_string)
+        .ok_or_else(|| "Signatur ohne Dateinamen".into())
+}
+
+/// Gehört der signierte Dateiname zu dieser Version und Plattform?
+fn signed_for(file: &str, version: &str, platform: &str) -> bool {
+    file.strip_prefix(&format!(
+        "chatty-native-{}-{platform}",
+        version.trim_start_matches('v')
+    ))
+    .is_some_and(|rest| matches!(rest, "" | ".exe" | ".AppImage"))
 }
 
 /// Laden, Signatur prüfen, laufende Datei ersetzen.
 pub async fn install(r: Release) -> Result<(), String> {
-    let data = reqwest::get(&r.url)
+    if !r.url.starts_with("https://") {
+        return Err("Update-Adresse ohne https – abgelehnt".into());
+    }
+    let resp = reqwest::get(&r.url)
         .await
         .and_then(|resp| resp.error_for_status())
-        .map_err(|e| e.to_string())?
-        .bytes()
+        .map_err(|e| e.to_string())?;
+    let data = chatty_core::backend::read_limited(resp, MAX_UPDATE)
         .await
         .map_err(|e| e.to_string())?;
-    verify(&public_key()?, &data, &r.signature)?;
+    let file = verify(&public_key()?, &data, &r.signature)?;
+    if !signed_for(&file, &r.version, &platform()) {
+        return Err(format!(
+            "Signatur gehört zu „{file}“, nicht zu Version {} – Update abgelehnt",
+            r.version
+        ));
+    }
     if cfg!(target_os = "linux") {
         let Some(appimage) = std::env::var_os("APPIMAGE") else {
             return Err(
@@ -180,8 +210,48 @@ mod tests {
         let key = decode_key(include_str!("../tests/fixtures/update.pub")).unwrap();
         let data = include_bytes!("../tests/fixtures/update.bin");
         let sig = include_str!("../tests/fixtures/update.bin.sig");
-        assert!(verify(&key, data, sig).is_ok());
+        assert_eq!(verify(&key, data, sig).as_deref(), Ok("data.bin"));
         assert!(verify(&key, b"manipuliert", sig).is_err());
+    }
+
+    #[test]
+    fn signature_bound_to_version_and_platform() {
+        assert!(signed_for(
+            "chatty-native-0.2.3-linux-x86_64.AppImage",
+            "0.2.3",
+            "linux-x86_64"
+        ));
+        assert!(signed_for(
+            "chatty-native-0.2.3-windows-x86_64.exe",
+            "v0.2.3",
+            "windows-x86_64"
+        ));
+        assert!(signed_for(
+            "chatty-native-0.2.3-darwin-aarch64",
+            "0.2.3",
+            "darwin-aarch64"
+        ));
+        // Alte Datei (ohne bzw. mit anderer Version) unter neuer Versionsnummer: abgelehnt.
+        assert!(!signed_for(
+            "chatty-native-linux-x86_64.AppImage",
+            "9.9.9",
+            "linux-x86_64"
+        ));
+        assert!(!signed_for(
+            "chatty-native-0.2.3-linux-x86_64.AppImage",
+            "0.2.30",
+            "linux-x86_64"
+        ));
+        assert!(!signed_for(
+            "chatty-native-0.2.30-linux-x86_64.AppImage",
+            "0.2.3",
+            "linux-x86_64"
+        ));
+        assert!(!signed_for(
+            "chatty-native-0.2.3-darwin-x86_64",
+            "0.2.3",
+            "darwin-aarch64"
+        ));
     }
 
     #[test]

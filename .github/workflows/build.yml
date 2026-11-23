@@ -46,6 +46,16 @@ jobs:
         working-directory: src-tauri
         run: cargo test --workspace
 
+      # Bekannte Schwachstellen in Abhängigkeiten (RustSec, npm); Warnungen wie „unmaintained“ brechen nicht ab.
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-audit@0.23.0
+      - name: cargo audit
+        working-directory: src-tauri
+        run: cargo audit
+      - name: npm audit
+        run: npm audit --omit=dev
+
       # ADR 03: nur ring als Krypto-Provider.
       - name: kein aws-lc-rs
         working-directory: src-tauri
@@ -88,7 +98,7 @@ jobs:
 
       - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with:
-          tool: cargo-packager
+          tool: cargo-packager@0.11.8
 
       - run: npm ci
 

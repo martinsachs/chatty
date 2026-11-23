@@ -1,15 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Hauptfenster und abgelöste Chatfenster",
-  "windows": [
-    "main",
-    "space-*"
-  ],
+  "description": "Hauptfenster: Links öffnen (nur http/https), Selbst-Update",
+  "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default",
-    "notification:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }, { "url": "http://*" }]
+    },
     "updater:default",
     "process:allow-restart"
   ]

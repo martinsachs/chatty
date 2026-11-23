@@ -89,7 +89,11 @@ async fn connect(backend: &MattermostBackend) -> Result<WebSocketStream<reqwest:
         )));
     }
     let upgraded = resp.upgrade().await?;
-    Ok(WebSocketStream::from_raw_socket(upgraded, Role::Client, None).await)
+    // Mattermost-Ereignisse sind klein; Obergrenzen gegen Speicherfluten eines bösartigen Servers.
+    let config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default()
+        .max_message_size(Some(4 << 20))
+        .max_frame_size(Some(1 << 20));
+    Ok(WebSocketStream::from_raw_socket(upgraded, Role::Client, Some(config)).await)
 }
 
 async fn session(backend: &MattermostBackend, tx: &EventSender) -> End {

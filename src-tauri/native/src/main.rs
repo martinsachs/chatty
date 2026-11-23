@@ -519,6 +519,7 @@ impl State {
                 let img = app
                     .avatar(&path)
                     .await
+                    .filter(|a| small_image(&a.data))
                     .map(|a| image::Handle::from_bytes(a.data));
                 (path, img)
             },
@@ -674,6 +675,16 @@ impl State {
         let app = self.app.clone();
         Task::perform(async move { f(app).await.map_err(|e| e.to_string()) }, done)
     }
+}
+
+/// Profilbilder/Emojis nur bis 2048×2048 dekodieren: eine kleine Datei mit riesigen Abmessungen
+/// (Dekompressionsbombe) belegte sonst Hunderte MiB.
+fn small_image(data: &[u8]) -> bool {
+    img::ImageReader::new(std::io::Cursor::new(data))
+        .with_guessed_format()
+        .ok()
+        .and_then(|r| r.into_dimensions().ok())
+        .is_some_and(|(w, h)| w <= 2048 && h <= 2048)
 }
 
 fn update(s: &mut State, message: Message) -> Task<Message> {
@@ -979,7 +990,7 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
             s.call(
                 move |app| async move {
                     let Some(file) = rfd::AsyncFileDialog::new()
-                        .set_file_name(&att.name)
+                        .set_file_name(chatty_core::model::safe_file_name(&att.name))
                         .save_file()
                         .await
                     else {
@@ -1277,11 +1288,12 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::Link(uri) => {
-            if uri.starts_with("http://")
-                || uri.starts_with("https://")
-                || uri.starts_with("mailto:")
-            {
+            if uri.starts_with("http://") || uri.starts_with("https://") {
                 let _ = opener::open_browser(&uri);
+            } else if let Some(addr) = uri.strip_prefix("mailto:") {
+                // Ohne Parameter: manche Mailprogramme hängen per `?attach=/pfad` lokale Dateien an.
+                let addr = addr.split('?').next().unwrap_or_default();
+                let _ = opener::open_browser(format!("mailto:{addr}"));
             }
             Task::none()
         }
@@ -1660,5 +1672,19 @@ mod tests {
     fn app_icon_decodes() {
         let icon = include_bytes!("../../icons/128x128.png");
         assert!(iced::window::icon::from_file_data(icon, None).is_ok());
+    }
+
+    #[test]
+    fn rejects_huge_images() {
+        assert!(super::small_image(include_bytes!(
+            "../../icons/128x128.png"
+        )));
+        // PNG-Kopf mit 30000×30000 (Dekompressionsbombe), ohne Bilddaten.
+        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        png.extend_from_slice(&30000u32.to_be_bytes());
+        png.extend_from_slice(&30000u32.to_be_bytes());
+        png.extend_from_slice(&[8, 6, 0, 0, 0, 0, 0, 0, 0]);
+        assert!(!super::small_image(&png));
+        assert!(!super::small_image(b"kein bild"));
     }
 }

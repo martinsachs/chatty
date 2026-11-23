@@ -14,7 +14,7 @@ use tokio::sync::{mpsc, watch};
 use super::MattermostBackend;
 use crate::backend::ChatBackend;
 use crate::error::{Error, Result};
-use crate::model::{Account, BackendEvent, BackendKind, SpaceKind, UploadFile};
+use crate::model::{Account, Attachment, BackendEvent, BackendKind, SpaceKind, UploadFile};
 use crate::secrets;
 
 type Rx = mpsc::UnboundedReceiver<(String, BackendEvent)>;
@@ -430,6 +430,24 @@ async fn scenario() -> Result<()> {
     .await?;
 
     task.abort();
+
+    // Sicherheit: Datei-ID mit Pfadteilen abgelehnt; Logout beendet die Sitzung serverseitig.
+    let evil = Attachment {
+        id: "../users/me".into(),
+        name: "x".into(),
+        mime: None,
+        size: None,
+        url: None,
+    };
+    check(
+        me.download(&evil).await.is_err(),
+        "Datei-ID mit ../ abgelehnt",
+    )?;
+    anna.logout().await?;
+    check(
+        matches!(anna.list_spaces().await, Err(Error::Auth(_))),
+        "nach Logout ist das Token ungültig",
+    )?;
     if let Ok(proxy) = std::env::var("CHATTY_MM_PROXY_URL") {
         reconnect_via_proxy(&proxy).await?;
     }

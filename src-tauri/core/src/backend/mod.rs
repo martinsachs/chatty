@@ -9,6 +9,30 @@ pub fn init_tls() {
     });
 }
 
+/// Obergrenze für Profilbilder und eigene Emojis (lädt ohne Klick für jeden Absender).
+pub const MAX_IMAGE: usize = 5 << 20;
+/// Obergrenze für Anhänge (liegen beim Speichern vollständig im Speicher).
+pub const MAX_ATTACHMENT: usize = 512 << 20;
+
+/// Antwort lesen, aber höchstens `max` Bytes: ein bösartiger Server kann sonst Speicher fluten.
+pub async fn read_limited(
+    mut resp: reqwest::Response,
+    max: usize,
+) -> crate::error::Result<Vec<u8>> {
+    let too_big = || crate::error::Error::other(format!("Antwort größer als {} MiB", max >> 20));
+    if resp.content_length().is_some_and(|n| n > max as u64) {
+        return Err(too_big());
+    }
+    let mut out = Vec::new();
+    while let Some(chunk) = resp.chunk().await? {
+        if out.len() + chunk.len() > max {
+            return Err(too_big());
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(out)
+}
+
 pub mod google;
 pub mod mattermost;
 
@@ -69,6 +93,11 @@ pub trait ChatBackend: Send + Sync {
         Ok(None)
     }
 
+    /// Sitzung bzw. Token beim Server widerrufen (beim Entfernen des Kontos). Fehler sind unkritisch.
+    async fn logout(&self) -> Result<()> {
+        Ok(())
+    }
+
     /// Namen eigener Server-Emojis (ohne Doppelpunkte).
     async fn custom_emojis(&self) -> Result<Vec<String>> {
         Ok(Vec::new())
@@ -113,4 +142,48 @@ pub trait ChatBackend: Send + Sync {
         active_space: watch::Receiver<Option<String>>,
         focused: watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()>;
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// Antwortet einmal mit `head` und danach `body_len` Bytes (bösartiger Server).
+    async fn server(head: &'static str, body_len: usize) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = s.read(&mut buf).await;
+            let _ = s.write_all(head.as_bytes()).await;
+            let chunk = vec![b'x'; 64 * 1024];
+            let mut sent = 0;
+            while sent < body_len {
+                if s.write_all(&chunk).await.is_err() {
+                    return;
+                }
+                sent += chunk.len();
+            }
+        });
+        format!("http://{addr}/")
+    }
+
+    #[tokio::test]
+    async fn read_limited_stops_oversized_bodies() {
+        super::init_tls();
+        let client = reqwest::Client::new();
+        // Angekündigte Länge zu groß: sofort abgelehnt.
+        let url = server("HTTP/1.1 200 OK\r\nContent-Length: 999999999\r\n\r\n", 0).await;
+        let resp = client.get(&url).send().await.unwrap();
+        assert!(super::read_limited(resp, 1 << 20).await.is_err());
+        // Ohne Länge (bis Verbindungsende), 8 MiB: nach 1 MiB abgebrochen.
+        let url = server("HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n", 8 << 20).await;
+        let resp = client.get(&url).send().await.unwrap();
+        assert!(super::read_limited(resp, 1 << 20).await.is_err());
+        // Kleine Antwort: vollständig.
+        let url = server("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n", 0).await;
+        let resp = client.get(&url).send().await.unwrap();
+        assert_eq!(super::read_limited(resp, 1 << 20).await.unwrap().len(), 0);
+    }
 }
