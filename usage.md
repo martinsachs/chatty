@@ -41,6 +41,8 @@ Beim ersten Start öffnet sich der Dialog **Konto hinzufügen**; später über *
 ### Mattermost
 
 Server-URL (z. B. `https://mattermost.example.org`), Benutzername oder E-Mail und Passwort eingeben.
+Nur `https://` wird angenommen (`http://` allein für `localhost`, z. B. einen Testserver), damit Passwort und
+Sitzungs-Token nicht im Klartext übers Netz gehen.
 Ist Zwei-Faktor-Anmeldung aktiv, zusätzlich den aktuellen MFA-Code. chatty speichert danach nur das
 Sitzungs-Token im Schlüsselbund, nicht das Passwort. Läuft die Sitzung ab, zeigt das Konto „getrennt“;
 unter **Konten → Neu anmelden** erneut einloggen.

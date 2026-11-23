@@ -104,6 +104,24 @@ fn host_of(server: &str) -> String {
         .unwrap_or_else(|| server.to_string())
 }
 
+/// Nur `https://`; `http://` allein zum eigenen Rechner (Testserver). Sonst gingen Passwort und Session-Token
+/// im Klartext übers Netz.
+fn require_tls(server: &str) -> Result<()> {
+    let url =
+        url::Url::parse(server).map_err(|e| Error::other(format!("Ungültige Server-URL: {e}")))?;
+    let loopback = match url.host() {
+        Some(url::Host::Domain(name)) => name == "localhost",
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    };
+    match url.scheme() {
+        "https" => Ok(()),
+        "http" if loopback => Ok(()),
+        _ => Err(Error::other("Server-URL muss mit https:// beginnen")),
+    }
+}
+
 impl MattermostBackend {
     /// Login mit Benutzer/Passwort (+ MFA-Code); speichert Session-Token im Keyring unter `account_id`.
     pub async fn login(
@@ -114,6 +132,7 @@ impl MattermostBackend {
         mfa: Option<String>,
     ) -> Result<Self> {
         let server = server.trim_end_matches('/').to_string();
+        require_tls(&server)?;
         let http = http_client()?;
         let mut body = json!({ "login_id": login, "password": password });
         if let Some(code) = mfa.filter(|c| !c.trim().is_empty()) {
@@ -153,6 +172,7 @@ impl MattermostBackend {
             .ok_or_else(|| Error::other("Mattermost-Konto ohne Server-URL"))?
             .trim_end_matches('/')
             .to_string();
+        require_tls(&server)?;
         let token = secrets::get(&account.id)?
             .ok_or_else(|| Error::Auth("Kein gespeichertes Session-Token".into()))?;
         let http = http_client()?;
@@ -723,5 +743,21 @@ impl ChatBackend for MattermostBackend {
         _focused: watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(ws::run(self, tx))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_url_needs_tls_except_loopback() {
+        assert!(require_tls("https://mm.example.org").is_ok());
+        assert!(require_tls("http://localhost:8065").is_ok());
+        assert!(require_tls("http://127.0.0.1:8066").is_ok());
+        assert!(require_tls("http://[::1]:8065").is_ok());
+        assert!(require_tls("http://mm.example.org").is_err());
+        assert!(require_tls("mm.example.org").is_err());
+        assert!(require_tls("ftp://mm.example.org").is_err());
     }
 }

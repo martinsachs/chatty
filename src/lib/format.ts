@@ -17,10 +17,12 @@ export function formatText(text: string, emojiUrl?: EmojiUrl): string {
     blocks.push(html);
     return `\u0000${blocks.length - 1}\u0000`;
   };
-  let s = escapeHtml(text)
+  // Platzhalter stehen für fertiges HTML mit Anführungszeichen: Kein URL-Muster darf \u0000 einschließen, sonst
+  // gerät das HTML in ein href und bricht aus dem Attribut aus. Echte \u0000 im Text würden Platzhalter fälschen.
+  let s = escapeHtml(text.replace(/\u0000/g, ""))
     .replace(/```(?:[a-z]*\n)?([\s\S]*?)\n?```\n?/g, (_, code) => keep(`<pre><code>${code}</code></pre>`))
     .replace(/`([^`\n]+)`/g, (_, code) => keep(`<code>${code}</code>`))
-    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => keep(`<a href="${url}" target="_blank" rel="noreferrer">${label}</a>`));
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)\u0000]+)\)/g, (_, label, url) => keep(`<a href="${url}" target="_blank" rel="noreferrer">${label}</a>`));
   if (emojiUrl) {
     s = s.replace(/:([a-z0-9_+-]+):/g, (all, name: string) => {
       const url = emojiUrl(name);
@@ -32,7 +34,7 @@ export function formatText(text: string, emojiUrl?: EmojiUrl): string {
     .replace(/(^|[\s(\u0000])\*([^*\n]+)\*(?=$|[\s.,!?)])/g, "$1<strong>$2</strong>")
     .replace(/(^|[\s(\u0000])_([^_\n]+)_(?=$|[\s.,!?)])/g, "$1<em>$2</em>")
     .replace(/(^|[\s(\u0000])~~?([^~\n]+)~~?(?=$|[\s.,!?)])/g, "$1<del>$2</del>")
-    .replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)'"])/g, '<a href="$1" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/(https?:\/\/[^\s<\u0000]+[^\s<\u0000.,;:!?)'"])/g, '<a href="$1" target="_blank" rel="noreferrer">$1</a>')
     .replace(/(^|[\s\u0000])(@[\w.-]+)/g, '$1<span class="mention">$2</span>')
     .replace(/\n/g, "<br>");
   return s.replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[Number(i)]);
