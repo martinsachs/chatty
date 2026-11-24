@@ -20,7 +20,7 @@ use self::api::{
     SearchResponse, SpaceList,
 };
 use self::oauth::Tokens;
-use crate::backend::{ChatBackend, EventSender};
+use crate::backend::{Avatar, ChatBackend, EventSender};
 use crate::config::{GoogleConfig, PollConfig};
 use crate::error::{Error, Result};
 use crate::model::{Account, Attachment, BackendKind, Message, Page, Space, UploadFile, User};
@@ -509,6 +509,21 @@ impl ChatBackend for GoogleBackend {
             .send(Method::GET, &url, |rb| rb.query(&[("alt", "media")]))
             .await?;
         crate::backend::read_limited(resp, crate::backend::MAX_ATTACHMENT).await
+    }
+
+    /// Google liefert keine verkleinerte Fassung: Originalbild bis [`crate::backend::MAX_PREVIEW`].
+    async fn preview(&self, attachment_id: &str) -> Result<Option<Avatar>> {
+        if !crate::model::path_safe_id(attachment_id) {
+            return Err(Error::other("Ungültige Anhang-ID"));
+        }
+        let url = self.api.chat(&format!("media/{attachment_id}"));
+        let resp = self
+            .api
+            .send(Method::GET, &url, |rb| rb.query(&[("alt", "media")]))
+            .await?;
+        Ok(Some(
+            crate::backend::read_image(resp, crate::backend::MAX_PREVIEW).await?,
+        ))
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Message>> {

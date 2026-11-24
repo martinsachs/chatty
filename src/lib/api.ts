@@ -151,3 +151,11 @@ export function avatarSrc(account: string, userId: string): string {
 export function emojiSrc(account: string, name: string): string {
   return `${convertFileSrc(account, "avatar")}/emoji/${encodeURIComponent(name)}`;
 }
+
+/** Bildvorschau eines Anhangs über dasselbe Schema (Mattermost verkleinert, Google Original bis 10 MiB). */
+export function previewSrc(account: string, attachment: Attachment): string | null {
+  const image = ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(attachment.mime ?? "");
+  return image && attachment.id
+    ? `${convertFileSrc(account, "avatar")}/file/${encodeURIComponent(attachment.id)}`
+    : null;
+}

@@ -6,6 +6,21 @@ export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ESC[c]);
 }
 
+/** Unicode-Emoji (Bildzeichen, auch mit Hautton, Variante oder ZWJ-Folge) und Flaggen. Text-Symbole wie © ohne
+ * Variantenwahl bleiben außen vor. */
+const EMOJI =
+  /(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}\u{FE0F})(?:\p{Emoji_Modifier}|\u{FE0F}|\u{20E3}|\u{200D}\p{Extended_Pictographic}\u{FE0F}?)*|\p{Regional_Indicator}{2}/gu;
+
+/** Nachricht nur aus wenigen Emojis (Unicode oder eigene): groß darstellen wie Mattermost/Slack. */
+export function emojiOnly(text: string, emojiUrl?: EmojiUrl): boolean {
+  let n = 0;
+  const rest = text
+    .replace(EMOJI, () => (n++, ""))
+    .replace(/:([a-z0-9_+-]+):/g, (all, name: string) => (emojiUrl?.(name) ? (n++, "") : all))
+    .trim();
+  return rest === "" && n > 0 && n <= 8;
+}
+
 /** Liefert die Bild-URL eines eigenen Server-Emojis oder `null`. */
 export type EmojiUrl = (name: string) => string | null;
 
@@ -29,6 +44,8 @@ export function formatText(text: string, emojiUrl?: EmojiUrl): string {
       return url ? keep(`<img class="emoji" src="${escapeHtml(url)}" alt="${all}" title="${all}">`) : all;
     });
   }
+  // Emojis etwas größer als der Text; als Platzhalter, damit kein URL-Muster das Span einschließt.
+  s = s.replace(EMOJI, (e) => keep(`<span class="emo">${e}</span>`));
   s = s
     .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[\s(\u0000])\*([^*\n]+)\*(?=$|[\s.,!?)])/g, "$1<strong>$2</strong>")

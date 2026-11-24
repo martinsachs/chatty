@@ -819,10 +819,11 @@ dependencies = [
 
 [[package]]
 name = "chatty"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "chatty-core",
  "hex",
+ "percent-encoding",
  "serde",
  "serde_json",
  "tauri",
@@ -838,7 +839,7 @@ dependencies = [
 
 [[package]]
 name = "chatty-core"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -863,7 +864,7 @@ dependencies = [
 
 [[package]]
 name = "chatty-native"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "base64 0.23.1",
  "chatty-core",

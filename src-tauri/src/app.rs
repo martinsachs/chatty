@@ -412,17 +412,21 @@ fn urlencode(s: &str) -> String {
 }
 
 /// URL-Schema `avatar://localhost/<konto>/<nutzer>` (Windows: `http://avatar.localhost/...`):
-/// lädt Profilbilder über das Backend, weil der Server sie nur mit Token herausgibt.
+/// lädt Profilbilder, eigene Emojis und Bildvorschauen von Anhängen (`<konto>/file/<id>`) über das Backend,
+/// weil der Server sie nur mit Token herausgibt.
 pub fn avatar_protocol(
     ctx: tauri::UriSchemeContext<'_, tauri::Wry>,
     request: tauri::http::Request<Vec<u8>>,
     responder: tauri::UriSchemeResponder,
 ) {
     let app = ctx.app_handle().clone();
-    let path = request.uri().path().trim_start_matches('/').to_string();
+    // Anhang-IDs (Google) enthalten `/`, `=`, `+`: die Oberfläche kodiert sie per encodeURIComponent.
+    let path = percent_encoding::percent_decode_str(request.uri().path().trim_start_matches('/'))
+        .decode_utf8_lossy()
+        .into_owned();
     tauri::async_runtime::spawn(async move {
         let avatar = match app.try_state::<AppState>() {
-            Some(state) => state.app.avatar(&path).await,
+            Some(state) => state.app.image(&path).await,
             None => None,
         };
         let response = match avatar {

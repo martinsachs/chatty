@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.2.4 – 2026-11-24
+
+**Neu** (beide Varianten)
+- Schriftgröße einstellbar (80–200 %, Darstellung oder Strg + Plus/Minus/0).
+- Angehängte Bilder als Vorschau im Verlauf; Klick speichert das Original.
+- Emojis größer: im Text 1,3-fach, Nachrichten nur aus Emojis groß. Native Variante zeigt Emojis im Text
+  jetzt farbig.
+
 ## 0.2.3 – 2026-11-23
 
 **Sicherheit** (Details: `konzept/sicherheit.md`)

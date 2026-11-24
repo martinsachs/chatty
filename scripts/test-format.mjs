@@ -7,7 +7,7 @@ import { stripTypeScriptTypes } from "node:module";
 const root = new URL("..", import.meta.url).pathname;
 const ts = readFileSync(`${root}src/lib/format.ts`, "utf8");
 const js = stripTypeScriptTypes(ts, { mode: "strip" });
-const { formatText } = await import(`data:text/javascript,${encodeURIComponent(js)}`);
+const { formatText, emojiOnly } = await import(`data:text/javascript,${encodeURIComponent(js)}`);
 
 const emoji = (name) => (name === "party" ? "avatar://localhost/a/emoji/party" : null);
 const link = (url, label = url) => `<a href="${url}" target="_blank" rel="noreferrer">${label}</a>`;
@@ -24,6 +24,12 @@ assert.equal(
   formatText(":party: _https://x.de_", emoji),
   `<img class="emoji" src="avatar://localhost/a/emoji/party" alt=":party:" title=":party:"> <em>${link("https://x.de")}</em>`,
 );
+assert.equal(formatText("ok 👍🏽 ©"), 'ok <span class="emo">👍🏽</span> ©');
+assert.equal(formatText("https://x.de/👍"), `${link("https://x.de/")}<span class="emo">👍</span>`);
+assert.ok(emojiOnly(" 🎉 :party: 👨‍👩‍👧 🇩🇪", emoji));
+assert.ok(!emojiOnly("🎉 ja", emoji));
+assert.ok(!emojiOnly(":x:", emoji));
+assert.ok(!emojiOnly("", emoji));
 
 // Kein fertiges HTML (Link, Code, Emoji) darf in einem href landen.
 const attacks = [
@@ -43,12 +49,12 @@ for (const text of attacks) {
 
 // Fuzzing mit festem Seed: jedes erzeugte Tag muss auf der Whitelist stehen (Pentest 2026-11-23).
 const allowed = [
-  /^<\/?(strong|em|del|code|pre|br)>$/, /^<\/a>$/, /^<span class="mention">$/, /^<\/span>$/,
+  /^<\/?(strong|em|del|code|pre|br)>$/, /^<\/a>$/, /^<span class="(mention|emo)">$/, /^<\/span>$/,
   /^<a href="https?:\/\/[^"<>]*"( title="https?:\/\/[^"<>]*")? target="_blank" rel="noreferrer">$/,
   /^<img class="emoji" src="avatar:\/\/localhost\/a\/emoji\/party" alt=":[a-z0-9_+-]+:" title=":[a-z0-9_+-]+:">$/,
 ];
 const alpha = ["https://", "http://x.de/", "[", "]", "(", ")", "`", "```", "*", "**", "_", "~", "~~", "@a", ":party:",
-  ":x:", '"', "'", "<", ">", "&", " ", "\n", "x", "\u0000", "0", "/", ".", "javascript:", "=", "#", "%22", "\u202e"];
+  ":x:", '"', "'", "<", ">", "&", " ", "\n", "x", "\u0000", "0", "/", ".", "javascript:", "=", "#", "%22", "\u202e", "👍", "🏽", "\u200d", "\ufe0f", "🇩"];
 let seed = 42;
 const rnd = (n) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) % n);
 for (let i = 0; i < 50_000; i++) {

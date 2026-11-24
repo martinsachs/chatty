@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type AccountInfo } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
+  import { setZoom, zoom, ZOOMS } from "$lib/zoom.svelte";
 
   let { onClose }: { onClose: () => void } = $props();
 
@@ -163,6 +164,12 @@
             <option value="ehex">ehex</option>
             <option value="mirc">mIRC</option>
             <option value="dos">DOS (Norton Commander)</option>
+          </select>
+        </label>
+        <label class="field">
+          Schriftgröße (auch Strg + Plus/Minus/0)
+          <select value={zoom.value} onchange={(e) => setZoom(Number(e.currentTarget.value))}>
+            {#each ZOOMS as z (z)}<option value={z}>{Math.round(z * 100)} %</option>{/each}
           </select>
         </label>
         <label class="check">

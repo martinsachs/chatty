@@ -608,6 +608,19 @@ impl ChatBackend for MattermostBackend {
         crate::backend::read_limited(resp, crate::backend::MAX_ATTACHMENT).await
     }
 
+    /// Vom Server verkleinerte Fassung (JPEG, höchstens 1920 px breit).
+    async fn preview(&self, attachment_id: &str) -> Result<Option<Avatar>> {
+        if attachment_id.is_empty() || !attachment_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(Error::other("Ungültige Datei-ID"));
+        }
+        let resp = self
+            .send_file_req(self.req(Method::GET, &format!("/files/{attachment_id}/preview")))
+            .await?;
+        Ok(Some(
+            crate::backend::read_image(resp, crate::backend::MAX_PREVIEW).await?,
+        ))
+    }
+
     async fn browse_spaces(&self, query: &str) -> Result<Vec<Space>> {
         let teams = self.my_teams().await?;
         let multi_team = teams.len() > 1;
@@ -651,16 +664,9 @@ impl ChatBackend for MattermostBackend {
         let resp = self
             .send_file_req(self.req(Method::GET, &format!("/users/{user_id}/image")))
             .await?;
-        let mime = resp
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("image/png")
-            .to_string();
-        Ok(Some(Avatar {
-            data: crate::backend::read_limited(resp, crate::backend::MAX_IMAGE).await?,
-            mime,
-        }))
+        Ok(Some(
+            crate::backend::read_image(resp, crate::backend::MAX_IMAGE).await?,
+        ))
     }
 
     async fn logout(&self) -> Result<()> {
@@ -680,16 +686,9 @@ impl ChatBackend for MattermostBackend {
         let resp = self
             .send_file_req(self.req(Method::GET, &format!("/emoji/{id}/image")))
             .await?;
-        let mime = resp
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("image/png")
-            .to_string();
-        Ok(Some(Avatar {
-            data: crate::backend::read_limited(resp, crate::backend::MAX_IMAGE).await?,
-            mime,
-        }))
+        Ok(Some(
+            crate::backend::read_image(resp, crate::backend::MAX_IMAGE).await?,
+        ))
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Message>> {

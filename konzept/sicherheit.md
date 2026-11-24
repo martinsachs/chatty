@@ -68,6 +68,16 @@ Gegen frischen Testserver (`scripts/mm-test-server.sh`):
 Benachrichtigungsdienste von GNOME und KDE, Windows und macOS, der Release-Workflow mit getrenntem Signieren
 (erst beim Tag 0.2.3), Mattermost bei übergroßen Profilbildern.
 
+## Nachtrag Bildvorschau (2026-11-24)
+
+Angehängte Bilder laden jetzt ohne Klick (wie Profilbilder). Absicherung: nur Anhänge mit MIME-Typ png/jpeg/
+gif/webp und API-ID; höchstens 10 MiB (`MAX_PREVIEW`); Mattermost liefert die serverseitig verkleinerte Fassung
+(`/files/{id}/preview`), ID nur alphanumerisch; Google ID per `path_safe_id`. Tauri: Auslieferung über `avatar://`
+mit derselben Typ-Whitelist, `nosniff` und CSP; Vorschauen werden im Kern nicht gemerkt (kein unbegrenzter
+Cache). Native: Abmessungen vor dem Dekodieren geprüft (max. 4096×4096). Integrationstest: Vorschau geladen,
+ID mit `../` abgelehnt. Ein Absender erfährt wie bei jedem Chat-Client nichts über das Laden: Bilder kommen vom
+eigenen Server, nicht von fremden Adressen.
+
 ## Offen (bewusst nicht umgesetzt)
 
 - **Ereigniskanal unbegrenzt:** Ein Server kann Ereignisse fluten. WebSocket-Limit gesetzt, begrenzter Kanal

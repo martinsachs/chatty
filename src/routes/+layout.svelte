@@ -2,7 +2,11 @@
   import "../app.css";
   import "../retro.css";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { onMount } from "svelte";
+  import { applyZoom, zoomKey, zoomStorage } from "$lib/zoom.svelte";
   let { children } = $props();
+
+  onMount(applyZoom);
 
   // Links aus Nachrichten nie im WebView öffnen (auch nicht per Mittelklick oder neuem Fenster),
   // sondern im Standardbrowser; andere Schemata gar nicht.
@@ -17,5 +21,6 @@
 </script>
 
 <svelte:document onclickcapture={onLink} onauxclickcapture={onLink} />
+<svelte:window onkeydown={zoomKey} onstorage={zoomStorage} />
 
 {@render children()}

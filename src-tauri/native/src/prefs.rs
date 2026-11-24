@@ -1,11 +1,13 @@
 //! Oberflächen-Einstellungen der nativen Variante (`native.json` im Konfigurationsverzeichnis), entspricht dem
-//! `localStorage` der Tauri-Oberfläche: Breite der Seitenleiste, Sortierung.
+//! `localStorage` der Tauri-Oberfläche: Breite der Seitenleiste, Sortierung, Schriftgröße.
 
 use serde::{Deserialize, Serialize};
 
 pub const SIDEBAR_MIN: f32 = 160.0;
 pub const SIDEBAR_MAX: f32 = 520.0;
 pub const SIDEBAR_DEFAULT: f32 = 240.0;
+/// Stufen der Schriftgröße (Skalierung der ganzen Oberfläche), wie die Tauri-Variante.
+pub const ZOOMS: [f32; 8] = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -37,6 +39,7 @@ impl std::fmt::Display for Sort {
 pub struct Prefs {
     pub sidebar_width: f32,
     pub sort: Sort,
+    pub zoom: f32,
 }
 
 impl Default for Prefs {
@@ -44,6 +47,7 @@ impl Default for Prefs {
         Prefs {
             sidebar_width: SIDEBAR_DEFAULT,
             sort: Sort::Recent,
+            zoom: 1.0,
         }
     }
 }
@@ -60,6 +64,9 @@ pub fn load() -> Prefs {
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
     p.sidebar_width = p.sidebar_width.clamp(SIDEBAR_MIN, SIDEBAR_MAX);
+    if !ZOOMS.contains(&p.zoom) {
+        p.zoom = 1.0;
+    }
     p
 }
 
@@ -79,5 +86,6 @@ mod tests {
         let p: Prefs = serde_json::from_str(r#"{"sort":"name"}"#).unwrap();
         assert_eq!(p.sort, Sort::Name);
         assert_eq!(p.sidebar_width, SIDEBAR_DEFAULT);
+        assert_eq!(p.zoom, 1.0);
     }
 }

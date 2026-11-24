@@ -363,6 +363,39 @@ async fn scenario() -> Result<()> {
 
     let data = me.download(&root.attachments[0]).await?;
     check(data == b"Inhalt 123", "download")?;
+    check(
+        !crate::backend::is_preview_image(&root.attachments[0]),
+        "Text-Anhang ohne Vorschau",
+    )?;
+
+    // Bild: Vorschau vom Server (verkleinertes JPEG, entsteht evtl. erst kurz nach dem Hochladen).
+    let png = UploadFile {
+        name: "bild.png".into(),
+        mime: "image/png".into(),
+        data: include_bytes!("../../../../icons/128x128.png").to_vec(),
+    };
+    let pic = me.send(&dev, "Bild", None, vec![png]).await?;
+    let att = &pic.attachments[0];
+    check(
+        crate::backend::is_preview_image(att),
+        "Bild-Anhang mit Vorschau",
+    )?;
+    let mut preview = None;
+    for _ in 0..20 {
+        if let Ok(Some(p)) = me.preview(&att.id).await {
+            preview = Some(p);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    check(
+        preview.is_some_and(|p| p.mime.starts_with("image/") && !p.data.is_empty()),
+        "preview",
+    )?;
+    check(
+        me.preview("../users/me").await.is_err(),
+        "Vorschau-ID mit ../ abgelehnt",
+    )?;
 
     let edited = me.edit(&dev, &root.id, "Wurzel bearbeitet").await?;
     check(

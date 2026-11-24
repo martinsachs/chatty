@@ -1,8 +1,8 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { api, avatarSrc, type Attachment, type Message } from "$lib/api";
+  import { api, avatarSrc, previewSrc, type Attachment, type Message } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
-  import { colorFor, formatText, initials, QUICK_EMOJI, size, time } from "$lib/format";
+  import { colorFor, emojiOnly, formatText, initials, QUICK_EMOJI, size, time } from "$lib/format";
 
   let {
     message: m,
@@ -14,6 +14,9 @@
   let draft = $state("");
   let picker = $state(false);
   let avatarFailed = $state(false);
+  // Anhänge, deren Vorschau nicht lädt (zu groß, Fehler): nur als Download zeigen.
+  let previewFailed = $state<Record<string, boolean>>({});
+  const emojiUrl = (n: string) => chat.emojiUrl(chat.account, n);
 
   // Mattermost liefert Profilbilder nur mit Token: über das Backend (avatar://) laden.
   const avatar = $derived(
@@ -79,11 +82,22 @@
       <textarea class="edit" bind:value={draft} onkeydown={editKey} autofocus rows="3"></textarea>
       <div class="edit-hint">Enter speichert · Esc bricht ab</div>
     {:else}
-      <div class="text">
-        {@html formatText(m.text, (n) => chat.emojiUrl(chat.account, n))}{#if m.edited}<span class="edited"> (bearbeitet)</span>{/if}
+      <div class="text" class:jumbo={emojiOnly(m.text, emojiUrl)}>
+        {@html formatText(m.text, emojiUrl)}{#if m.edited}<span class="edited"> (bearbeitet)</span>{/if}
       </div>
     {/if}
-    {#if m.attachments.length}
+    {#if m.attachments.length && chat.account}
+      {@const account = chat.account}
+      <div class="previews">
+        {#each m.attachments as a (a.id + a.name)}
+          {@const src = previewSrc(account, a)}
+          {#if src && !previewFailed[a.id]}
+            <button class="preview" onclick={() => download(a)} title="{a.name} herunterladen">
+              <img {src} alt={a.name} loading="lazy" onerror={() => (previewFailed[a.id] = true)} />
+            </button>
+          {/if}
+        {/each}
+      </div>
       <div class="files">
         {#each m.attachments as a (a.id + a.name)}
           <button class="file" onclick={() => download(a)} title="Herunterladen">
@@ -100,7 +114,7 @@
           {@const custom = /^:([a-z0-9_+-]+):$/.exec(r.emoji)}
           {@const url = custom ? chat.emojiUrl(chat.account, custom[1]) : null}
           <button class="reaction" class:me={r.me} onclick={() => chat.toggleReaction(m, r.emoji)}>
-            {#if url}<img class="emoji" src={url} alt={r.emoji} title={r.emoji} />{:else}{r.emoji}{/if}
+            {#if url}<img class="emoji" src={url} alt={r.emoji} title={r.emoji} />{:else}<span class="emo">{r.emoji}</span>{/if}
             <span>{r.count}</span>
           </button>
         {/each}
@@ -209,6 +223,36 @@
     line-height: 1.45;
     overflow-wrap: anywhere;
   }
+  /* Nur Emojis: groß wie bei Mattermost/Slack. */
+  .text.jumbo {
+    font-size: 2.2em;
+    line-height: 1.25;
+  }
+  .text.jumbo :global(.emo) {
+    font-size: 1em;
+  }
+  .previews {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .previews:empty {
+    display: none;
+  }
+  .preview {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0;
+    background: none;
+    overflow: hidden;
+    line-height: 0;
+  }
+  .preview img {
+    max-width: min(400px, 100%);
+    max-height: 300px;
+    object-fit: contain;
+  }
   .edited {
     font-size: 12px;
     color: var(--text-muted);
@@ -293,7 +337,7 @@
     right: 16px;
     z-index: 5;
     display: grid;
-    grid-template-columns: repeat(6, 32px);
+    grid-template-columns: repeat(6, 36px);
     background: var(--center-bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -303,7 +347,7 @@
   .picker button {
     border: none;
     background: none;
-    font-size: 18px;
+    font-size: 22px;
     padding: 4px;
     border-radius: 4px;
   }

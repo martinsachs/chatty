@@ -2,6 +2,7 @@
 //! Vorbild ist die Tauri-Oberfläche (`src/lib/components/`), Abweichungen in `konzept/drift-native-tauri.md`.
 
 use chatty_core::app::THEMES;
+use chatty_core::backend::is_preview_image;
 use chatty_core::model::{BackendKind, Message as Msg, Space, SpaceKind};
 use iced::widget::text_editor::{Binding, KeyPress};
 use iced::widget::{
@@ -515,7 +516,9 @@ fn message<'a>(s: &'a State, m: &'a Msg, in_thread: bool, compact: bool) -> Elem
     let look = &s.look;
     let time = time(m.created);
     let body: Element<'a, Message> = match s.md.get(&m.id) {
-        Some(items) => markdown::view(items, look.markdown()).map(Message::Link),
+        // Nur Emojis: groß wie bei Mattermost/Slack.
+        _ if crate::text::emoji_only(&m.text) => text(m.text.trim()).size(34).into(),
+        Some(items) => markdown::view_with(items, look.markdown(), &EmojiViewer),
         None => text(&m.text).font(look.font(false)).into(),
     };
     let body: Element<'a, Message> = if m.mentions_me && !m.mine {
@@ -570,6 +573,28 @@ fn message<'a>(s: &'a State, m: &'a Msg, in_thread: bool, compact: bool) -> Elem
             .spacing(8),
         );
     }
+    if let Some(acc) = &s.account {
+        let mut previews = row![].spacing(6);
+        let mut any = false;
+        for a in m.attachments.iter().filter(|a| is_preview_image(a)) {
+            if let Some(h) = s.image(&crate::preview_path(acc, a)) {
+                any = true;
+                previews = previews.push(
+                    button(
+                        container(image(h.clone()).content_fit(iced::ContentFit::ScaleDown))
+                            .max_width(400)
+                            .max_height(300),
+                    )
+                    .on_press(Message::Save(a.clone()))
+                    .padding(0)
+                    .style(|_, _| button::Style::default()),
+                );
+            }
+        }
+        if any {
+            content = content.push(previews);
+        }
+    }
     if !m.attachments.is_empty() {
         let mut files = row![].spacing(6);
         for a in &m.attachments {
@@ -592,12 +617,16 @@ fn message<'a>(s: &'a State, m: &'a Msg, in_thread: bool, compact: bool) -> Elem
             let label: Element<'a, Message> =
                 match s.custom_emoji(&r.emoji).and_then(|p| s.image(&p)) {
                     Some(h) => row![
-                        image(h.clone()).width(18).height(18),
+                        image(h.clone()).width(22).height(22),
                         text(r.count.to_string()).size(13)
                     ]
                     .spacing(4)
+                    .align_y(Alignment::Center)
                     .into(),
-                    None => text(format!("{} {}", r.emoji, r.count)).size(13).into(),
+                    None => row![text(&r.emoji).size(18), text(r.count.to_string()).size(13)]
+                        .spacing(4)
+                        .align_y(Alignment::Center)
+                        .into(),
                 };
             let me = r.me;
             rs = rs.push(
@@ -1018,6 +1047,19 @@ fn settings(s: &State) -> Element<'_, Message> {
         ]
         .align_y(Alignment::Center),
     );
+    col = col.push(
+        row![
+            text("Schriftgröße").width(120),
+            pick_list(
+                ZOOM_LABELS,
+                ZOOM_LABELS.iter().copied().find(|z| z.0 == s.prefs.zoom),
+                |z| Message::Zoom(z.0)
+            ),
+            text("auch Strg + Plus/Minus/0").size(12).color(look.muted),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    );
     let notifications = s.info.as_ref().is_none_or(|i| i.notifications);
     col = col.push(
         checkbox(notifications)
@@ -1036,4 +1078,68 @@ fn settings(s: &State) -> Element<'_, Message> {
         .center_x(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+/// Schriftgröße für die Auswahlliste („125 %“).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Zoom(f32);
+
+impl std::fmt::Display for Zoom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} %", (self.0 * 100.0).round())
+    }
+}
+
+const ZOOM_LABELS: &[Zoom] = &[
+    Zoom(0.8),
+    Zoom(0.9),
+    Zoom(1.0),
+    Zoom(1.1),
+    Zoom(1.25),
+    Zoom(1.5),
+    Zoom(1.75),
+    Zoom(2.0),
+];
+
+/// Farb-Emoji-Schrift des Systems. Ohne ausdrückliche Wahl nimmt cosmic-text z. B. die Schwarz-Weiß-Glyphen
+/// von DejaVu Sans, weil die in der Fallback-Liste vor Noto Color Emoji steht.
+const EMOJI_FONT: iced::Font = iced::Font::with_name(if cfg!(target_os = "windows") {
+    "Segoe UI Emoji"
+} else if cfg!(target_os = "macos") {
+    "Apple Color Emoji"
+} else {
+    "Noto Color Emoji"
+});
+
+/// Markdown wie üblich, Emojis im Fließtext aber farbig und etwas größer als der Text.
+struct EmojiViewer;
+
+impl<'a> markdown::Viewer<'a, Message> for EmojiViewer {
+    fn on_link_click(url: markdown::Uri) -> Message {
+        Message::Link(url)
+    }
+
+    fn paragraph(
+        &self,
+        settings: markdown::Settings,
+        text: &markdown::Text,
+    ) -> Element<'a, Message> {
+        let size = settings.text_size * 1.3;
+        let mut spans = Vec::new();
+        for span in text.spans(settings.style).iter() {
+            for (part, emoji) in crate::text::emoji_runs(&span.text) {
+                let mut s = span.clone();
+                s.text = part.to_string().into();
+                if emoji {
+                    s.font = Some(EMOJI_FONT);
+                    s.size = Some(size);
+                }
+                spans.push(s);
+            }
+        }
+        iced::widget::rich_text(spans)
+            .size(settings.text_size)
+            .on_link_click(Self::on_link_click)
+            .into()
+    }
 }

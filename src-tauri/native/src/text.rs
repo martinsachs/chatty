@@ -1,5 +1,48 @@
 //! Nachrichtentext für die Markdown-Darstellung vorbereiten.
 
+/// Bildzeichen, Symbole, Flaggen (Zeichenbereiche statt Unicode-Tabelle).
+fn emoji_base(c: char) -> bool {
+    matches!(c as u32, 0x1F000..=0x1FAFF | 0x2600..=0x27BF | 0x2B00..=0x2BFF | 0x2300..=0x23FF)
+        && !emoji_joiner(c)
+}
+
+/// Hautton, Variante, ZWJ, Tastenkappe, Tags: gehören zum Emoji davor.
+fn emoji_joiner(c: char) -> bool {
+    matches!(c as u32, 0x200D | 0xFE0F | 0x20E3 | 0x1F3FB..=0x1F3FF | 0xE0020..=0xE007F)
+}
+
+/// Nachricht nur aus wenigen Unicode-Emojis: groß darstellen (wie `emojiOnly` in format.ts).
+pub fn emoji_only(text: &str) -> bool {
+    let mut n = 0;
+    for c in text.chars() {
+        if emoji_base(c) {
+            n += 1;
+        } else if !c.is_whitespace() && !emoji_joiner(c) {
+            return false;
+        }
+    }
+    n > 0 && n <= 10
+}
+
+/// Text in Läufe aus Emojis (`true`) und übrigem Text zerlegen.
+pub fn emoji_runs(text: &str) -> Vec<(&str, bool)> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut in_emoji = false;
+    for (i, c) in text.char_indices() {
+        let emoji = emoji_base(c) || (in_emoji && emoji_joiner(c));
+        if emoji != in_emoji && i > start {
+            out.push((&text[start..i], in_emoji));
+            start = i;
+        }
+        in_emoji = emoji;
+    }
+    if start < text.len() {
+        out.push((&text[start..], in_emoji));
+    }
+    out
+}
+
 /// Chat-Nachrichten trennen Zeilen mit einfachem Zeilenumbruch; Markdown würde sie zusammenziehen.
 /// Außerhalb von Code-Blöcken wird daher jeder Umbruch ein harter Umbruch (zwei Leerzeichen am Zeilenende).
 pub fn hard_breaks(text: &str) -> String {
@@ -148,6 +191,25 @@ pub fn initials(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_emoji_only() {
+        assert!(emoji_only(" 🎉 👍🏽 👨‍👩‍👧 🇩🇪 ❤️ "));
+        assert!(!emoji_only("🎉 ja"));
+        assert!(!emoji_only(""));
+        assert!(!emoji_only("©"));
+        assert!(!emoji_only(&"🎉".repeat(11)));
+    }
+
+    #[test]
+    fn splits_emoji_runs() {
+        assert_eq!(
+            emoji_runs("ok 👍🏽❤️ ja😄"),
+            vec![("ok ", false), ("👍🏽❤️", true), (" ja", false), ("😄", true)]
+        );
+        assert_eq!(emoji_runs("nur Text"), vec![("nur Text", false)]);
+        assert!(emoji_runs("").is_empty());
+    }
 
     #[test]
     fn breaks_outside_code_only() {

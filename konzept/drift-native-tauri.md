@@ -28,6 +28,9 @@ offen, mit Grund).
 |---|---|---|
 | Mattermost: Thread-Antworten auch im Hauptverlauf, links mit Balken markiert; Klick auf ↩ öffnet den Thread mit Startnachricht; Antwortzähler aus den geladenen Antworten (Auftrag 2026-11-21) | – | gleich (beide) |
 | Mattermost: Kanal-Header (erste Zeile, Markdown mit klickbaren Links) unter dem Kanalnamen; Retro-Optiken einzeilig „Name: Header“; Änderung per WebSocket `channel_updated` (Auftrag 2026-11-23) | – | gleich (beide; Tooltip mit ganzem Header nur Tauri) |
+| Bildvorschau angehängter Bilder (max. 400×300, Klick speichert); Mattermost `/files/{id}/preview`, Google Original bis 10 MiB (Auftrag 2026-11-24) | – | gleich (beide; native dekodiert bis 4096×4096) |
+| Schriftgröße 80–200 % in Darstellung und per Strg + Plus/Minus/0 (Auftrag 2026-11-24) | – | gleich (beide; Tauri WebView-Zoom, native `scale_factor`) |
+| Emojis im Text 1,3× Schriftgröße, Nachricht nur aus Emojis groß; native setzt Farb-Emoji-Schrift ausdrücklich (sonst Schwarz-Weiß-Glyphen aus DejaVu Sans) (Auftrag 2026-11-24) | – | gleich (beide) |
 | Tagestrenner „Heute“, „Gestern“, Datum | fehlte | angeglichen |
 | Gruppierung Folgenachrichten (5 min, gleicher Tag), Uhrzeit beim Überfahren | ohne Tagesgrenze, ohne Uhrzeit | angeglichen |
 | Knopf „↓“ nach unten nach > 300 px Hochscrollen | fehlte | angeglichen |

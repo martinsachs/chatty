@@ -600,12 +600,7 @@ impl App {
     /// geladen. Ungültige Pfade und Fehler liefern `None`; Fehler werden nicht gemerkt.
     pub async fn avatar(&self, path: &str) -> Option<Avatar> {
         let (account, rest) = path.split_once('/')?;
-        let valid = |s: &str, extra: &[char]| {
-            !s.is_empty()
-                && s.chars().all(|c| {
-                    c.is_ascii_alphanumeric() || c == '-' || c == '_' || extra.contains(&c)
-                })
-        };
+        let valid = valid_part;
         let emoji = rest.strip_prefix("emoji/");
         let ok = match emoji {
             Some(name) => valid(name, &['+']),
@@ -629,6 +624,25 @@ impl App {
         .ok()?
         .clone()
     }
+
+    /// Wie [`App::avatar`], dazu `<konto>/file/<anhang-id>`: Bildvorschau eines Anhangs. Vorschauen werden
+    /// nicht gemerkt (zu groß für einen Cache ohne Obergrenze); die ID prüft das Backend.
+    pub async fn image(&self, path: &str) -> Option<Avatar> {
+        if let Some((account, id)) = path.split_once("/file/") {
+            if !valid_part(account, &[]) {
+                return None;
+            }
+            return self.backend(account).await.ok()?.preview(id).await.ok()?;
+        }
+        self.avatar(path).await
+    }
+}
+
+/// Pfadteil aus Buchstaben, Ziffern, `-`, `_` und `extra`.
+fn valid_part(s: &str, extra: &[char]) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || extra.contains(&c))
 }
 
 #[cfg(test)]

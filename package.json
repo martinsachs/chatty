@@ -1,6 +1,6 @@
 {
   "name": "chatty",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Server-unabhängiger Desktop-Chatclient",
   "type": "module",
   "scripts": {

@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use chatty_core::app::Events;
+use chatty_core::backend::is_preview_image;
 use chatty_core::model::{
     Attachment, BackendEvent, BackendKind, Message as Msg, Page, Space, SpaceKind,
 };
@@ -28,7 +29,7 @@ use iced::widget::{Id, image, markdown, operation, scrollable, text_editor};
 use iced::{Subscription, Task, event, keyboard, mouse, window};
 
 use crate::look::Look;
-use crate::prefs::{Prefs, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, Sort};
+use crate::prefs::{Prefs, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, Sort, ZOOMS};
 
 /// Ereignis-Empfänger des Kerns; die Subscription holt ihn einmal ab.
 static EVENTS: OnceLock<Mutex<Option<Events>>> = OnceLock::new();
@@ -60,6 +61,7 @@ fn main() -> iced::Result {
         })
         .subscription(subscription)
         .theme(|s: &State| s.look.theme())
+        .scale_factor(|s: &State| s.prefs.zoom)
         // Unsichtbar und zentriert starten; `boot` setzt 2/3 des Bildschirms und zeigt das Fenster dann.
         .window(window::Settings {
             size: INITIAL_SIZE,
@@ -232,6 +234,10 @@ pub enum Message {
     Settings(bool),
     FormInput(FormField, String),
     Theme(&'static str),
+    /// Schriftgröße (Stufe aus `ZOOMS`).
+    Zoom(f32),
+    /// Strg + Plus/Minus: eine Stufe größer/kleiner.
+    ZoomStep(i32),
     Notifications(bool),
     AddMattermost,
     AddGoogle(Option<String>),
@@ -504,6 +510,11 @@ impl State {
                     tasks.push(self.fetch_image(path));
                 }
             }
+            if let Some(acc) = self.account.clone() {
+                for a in m.attachments.iter().filter(|a| is_preview_image(a)) {
+                    tasks.push(self.fetch_image(preview_path(&acc, a)));
+                }
+            }
         }
         Task::batch(tasks)
     }
@@ -516,10 +527,12 @@ impl State {
         let app = self.app.clone();
         Task::perform(
             async move {
+                // Vorschauen größer zulassen als Profilbilder und Emojis.
+                let max = if path.contains("/file/") { 4096 } else { 2048 };
                 let img = app
-                    .avatar(&path)
+                    .image(&path)
                     .await
-                    .filter(|a| small_image(&a.data))
+                    .filter(|a| small_image(&a.data, max))
                     .map(|a| image::Handle::from_bytes(a.data));
                 (path, img)
             },
@@ -677,14 +690,19 @@ impl State {
     }
 }
 
-/// Profilbilder/Emojis nur bis 2048×2048 dekodieren: eine kleine Datei mit riesigen Abmessungen
+/// Pfad der Bildvorschau eines Anhangs in `State::images` (siehe `App::image`).
+pub fn preview_path(account: &str, a: &Attachment) -> String {
+    format!("{account}/file/{}", a.id)
+}
+
+/// Bilder nur bis `max`×`max` dekodieren: eine kleine Datei mit riesigen Abmessungen
 /// (Dekompressionsbombe) belegte sonst Hunderte MiB.
-fn small_image(data: &[u8]) -> bool {
+fn small_image(data: &[u8], max: u32) -> bool {
     img::ImageReader::new(std::io::Cursor::new(data))
         .with_guessed_format()
         .ok()
         .and_then(|r| r.into_dimensions().ok())
-        .is_some_and(|(w, h)| w <= 2048 && h <= 2048)
+        .is_some_and(|(w, h)| w <= max && h <= max)
 }
 
 fn update(s: &mut State, message: Message) -> Task<Message> {
@@ -1287,6 +1305,16 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
             s.images.insert(path, img);
             Task::none()
         }
+        Message::Zoom(z) => {
+            s.prefs.zoom = if ZOOMS.contains(&z) { z } else { 1.0 };
+            prefs::save(&s.prefs);
+            Task::none()
+        }
+        Message::ZoomStep(step) => {
+            let i = ZOOMS.iter().position(|z| *z == s.prefs.zoom).unwrap_or(2) as i32;
+            let z = ZOOMS[(i + step).clamp(0, ZOOMS.len() as i32 - 1) as usize];
+            update(s, Message::Zoom(z))
+        }
         Message::Link(uri) => {
             if uri.starts_with("http://") || uri.starts_with("https://") {
                 let _ = opener::open_browser(&uri);
@@ -1648,6 +1676,17 @@ fn subscription(s: &State) -> Subscription<Message> {
             key: keyboard::Key::Named(keyboard::key::Named::Escape),
             ..
         } => Message::Escape,
+        // Strg/Cmd + Plus/Minus/0: Schriftgröße wie im Browser.
+        keyboard::Event::KeyPressed {
+            key: keyboard::Key::Character(c),
+            modifiers,
+            ..
+        } if modifiers.command() && !modifiers.alt() => match c.as_str() {
+            "+" | "=" => Message::ZoomStep(1),
+            "-" => Message::ZoomStep(-1),
+            "0" => Message::Zoom(1.0),
+            _ => Message::Ignore,
+        },
         _ => Message::Ignore,
     });
     let mut subs = vec![events, focus, keys];
@@ -1676,15 +1715,16 @@ mod tests {
 
     #[test]
     fn rejects_huge_images() {
-        assert!(super::small_image(include_bytes!(
-            "../../icons/128x128.png"
-        )));
+        assert!(super::small_image(
+            include_bytes!("../../icons/128x128.png"),
+            2048
+        ));
         // PNG-Kopf mit 30000×30000 (Dekompressionsbombe), ohne Bilddaten.
         let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
         png.extend_from_slice(&30000u32.to_be_bytes());
         png.extend_from_slice(&30000u32.to_be_bytes());
         png.extend_from_slice(&[8, 6, 0, 0, 0, 0, 0, 0, 0]);
-        assert!(!super::small_image(&png));
-        assert!(!super::small_image(b"kein bild"));
+        assert!(!super::small_image(&png, 4096));
+        assert!(!super::small_image(b"kein bild", 4096));
     }
 }

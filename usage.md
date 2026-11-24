@@ -91,7 +91,8 @@ active_secs = 5           # offener Space, solange ein chatty-Fenster den Fokus 
 spaces_secs = 20          # Space-Liste / Ungelesen
 ```
 
-Optik und Benachrichtigungen lassen sich auch unter **+ → Darstellung** ändern. Längere
+Optik und Benachrichtigungen lassen sich auch unter **+ → Darstellung** ändern, dort auch die Schriftgröße
+(nicht in `chatty.toml`: Tauri merkt sie in der WebView, native in `native.json`). Längere
 Polling-Intervalle sparen API-Kontingent: Das Google-Cloud-Projekt hat ein gemeinsames Limit
 (3000 Lesezugriffe pro Minute) für alle Nutzer.
 
@@ -110,7 +111,8 @@ macOS `~/Library/Application Support/chatty`). Er darf gelöscht werden.
 | Sortieren | Auswahl neben dem Filterfeld: Neueste (letzte Nachricht), Name, Meiste (Anzahl Nachrichten) |
 | Favorit | ☆ beim Überfahren des Eintrags, oder Eintrag in „Favoriten“ ziehen; dort per Ziehen ordnen, herausziehen entfernt |
 | Stumm schalten | 🔔 beim Überfahren; stumme Kanäle grau, Benachrichtigung nur bei Erwähnung |
-| Emojis | `:name:` im Text wird zum Emoji (volle Mattermost-Liste); eigene Server-Emojis erscheinen als Bild, auch in Reaktionen; Status-Emoji der Person steht neben der Direktnachricht |
+| Emojis | `:name:` im Text wird zum Emoji (volle Mattermost-Liste); eigene Server-Emojis erscheinen als Bild, auch in Reaktionen; Status-Emoji der Person steht neben der Direktnachricht. Emojis sind etwas größer als der Text, Nachrichten nur aus Emojis (bis 8–10) groß |
+| Schriftgröße | **+ → Darstellung → Schriftgröße** (80–200 %) oder Strg + Plus/Minus, Strg + 0 = 100 %; gilt je Rechner für die ganze Oberfläche |
 | Kanal-Header (Mattermost) | erste Zeile unter dem Kanalnamen, Links anklickbar; ganzer Text als Tooltip (Tauri) |
 | Zur neuesten Nachricht | Knopf ↓ unten rechts, sobald hochgescrollt |
 | Alte Direktnachrichten | ohne Nachricht seit 90 Tagen ausgeblendet; über das Filterfeld weiter auffindbar |
@@ -120,6 +122,7 @@ macOS `~/Library/Application Support/chatty`). Er darf gelöscht werden.
 | Reaktion | Maus über die Nachricht → ☺, oder vorhandene Reaktion anklicken (an/aus) |
 | Thread | ↩ an der Nachricht oder „n Antworten“ → rechte Seitenleiste |
 | Datei senden | 📎 im Eingabefeld |
+| Bilder | angehängte Bilder (PNG, JPEG, GIF, WebP) stehen als Vorschau im Verlauf; Klick speichert das Original. Mattermost liefert eine verkleinerte Fassung, Google das Original (bis 10 MiB, größere nur als Datei) |
 | Datei laden | Anhang anklicken → Speicherort wählen |
 | Suchen | Suchfeld oben rechts, Enter; Treffer anklicken springt in den Space |
 | Chat in eigenem Fenster | ⧉ oben rechts |

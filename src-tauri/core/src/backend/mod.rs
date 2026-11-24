@@ -11,6 +11,8 @@ pub fn init_tls() {
 
 /// Obergrenze für Profilbilder und eigene Emojis (lädt ohne Klick für jeden Absender).
 pub const MAX_IMAGE: usize = 5 << 20;
+/// Obergrenze für Bildvorschauen von Anhängen im Verlauf (größere bleiben reiner Download).
+pub const MAX_PREVIEW: usize = 10 << 20;
 /// Obergrenze für Anhänge (liegen beim Speichern vollständig im Speicher).
 pub const MAX_ATTACHMENT: usize = 512 << 20;
 
@@ -31,6 +33,28 @@ pub async fn read_limited(
         out.extend_from_slice(&chunk);
     }
     Ok(out)
+}
+
+/// Bildantwort lesen (höchstens `max` Bytes), MIME-Typ aus dem Header. Die Oberflächen prüfen den Typ selbst.
+pub async fn read_image(resp: reqwest::Response, max: usize) -> crate::error::Result<Avatar> {
+    let mime = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/png")
+        .to_string();
+    Ok(Avatar {
+        data: read_limited(resp, max).await?,
+        mime,
+    })
+}
+
+/// Anhang als Bildvorschau im Verlauf zeigen: Bildtyp, über die API ladbar.
+pub fn is_preview_image(a: &crate::model::Attachment) -> bool {
+    !a.id.is_empty()
+        && a.mime
+            .as_deref()
+            .is_some_and(|m| matches!(m, "image/png" | "image/jpeg" | "image/gif" | "image/webp"))
 }
 
 pub mod google;
@@ -90,6 +114,11 @@ pub trait ChatBackend: Send + Sync {
 
     /// Profilbild eines Nutzers, falls das Backend es nur authentifiziert liefert.
     async fn avatar(&self, _user_id: &str) -> Result<Option<Avatar>> {
+        Ok(None)
+    }
+
+    /// Bildvorschau eines Anhangs (Anhang-ID wie bei `download`), höchstens [`MAX_PREVIEW`].
+    async fn preview(&self, _attachment_id: &str) -> Result<Option<Avatar>> {
         Ok(None)
     }
 

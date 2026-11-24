@@ -218,9 +218,16 @@ pre code {
   background: var(--center-bg);
 }
 
+/* Unicode-Emojis im Text und in Reaktionen etwas größer als die Schrift (format.ts). */
+.emo {
+  font-size: 1.3em;
+  line-height: 1;
+  vertical-align: -0.1em;
+}
+
 /* Eigene Server-Emojis im Text, in Reaktionen und als Status. */
 img.emoji {
-  height: 1.35em;
+  height: 1.6em;
   width: auto;
   vertical-align: -0.3em;
 }
