@@ -188,9 +188,61 @@ pub fn initials(name: &str) -> String {
         .to_uppercase()
 }
 
+/// Geladener Verlauf als ein Text für die Textansicht: Tagestrenner, je Nachricht „HH:MM Name: Text“,
+/// Folgezeilen eingerückt, Anhänge als „[📎 Name]“.
+pub fn transcript(msgs: &[chatty_core::model::Message]) -> String {
+    let mut out = String::new();
+    let mut prev_day = None;
+    for m in msgs {
+        let d = date(m.created);
+        if prev_day != Some(d) {
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(&format!("── {} ──\n", day(m.created)));
+            prev_day = Some(d);
+        }
+        let reply = if m.is_reply { "↳ " } else { "" };
+        let mut lines = m.text.trim_end().lines();
+        out.push_str(&format!(
+            "{} {reply}{}: {}\n",
+            time(m.created),
+            m.sender.name,
+            lines.next().unwrap_or("")
+        ));
+        for line in lines {
+            out.push_str(&format!("      {line}\n"));
+        }
+        for a in &m.attachments {
+            out.push_str(&format!("      [📎 {}]\n", a.name));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transcript_lists_messages() {
+        let msg = |text: &str, reply: bool| -> chatty_core::model::Message {
+            serde_json::from_value(serde_json::json!({
+                "id": "1", "space_id": "s", "is_reply": reply, "text": text, "created": 0,
+                "sender": {"id": "u", "name": "Anna"},
+                "attachments": [{"id": "f", "name": "a.pdf"}]
+            }))
+            .unwrap()
+        };
+        let t = transcript(&[msg("hallo\nzwei", false), msg("ok", true)]);
+        let lines: Vec<&str> = t.lines().collect();
+        assert!(lines[0].starts_with("── "), "{t}");
+        assert!(lines[1].ends_with(" Anna: hallo"), "{t}");
+        assert_eq!(lines[2], "      zwei");
+        assert_eq!(lines[3], "      [📎 a.pdf]");
+        assert!(lines[4].ends_with(" ↳ Anna: ok"), "{t}");
+        assert_eq!(lines.len(), 6, "ein Tagestrenner: {t}");
+    }
 
     #[test]
     fn detects_emoji_only() {

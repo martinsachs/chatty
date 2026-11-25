@@ -15,6 +15,9 @@
     const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
     if (!a) return;
     e.preventDefault();
+    // Endet eine Markierung auf dem Link, ist das Kopieren gemeint, kein Öffnen.
+    const sel = window.getSelection();
+    if (e.type === "click" && e.button === 0 && sel && !sel.isCollapsed) return;
     if (e.type === "click" || e.button === 1) {
       if (/^https?:\/\//.test(a.href)) openUrl(a.href);
     }

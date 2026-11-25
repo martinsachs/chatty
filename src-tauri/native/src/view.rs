@@ -301,6 +301,9 @@ fn center(s: &State) -> Element<'_, Message> {
     let header = container(
         row![
             topic_header(s, &space.name),
+            // Textansicht: ganzen Verlauf markieren und kopieren (Strg+Umschalt+A).
+            small(look, if s.as_text { "Verlauf" } else { "Als Text" })
+                .on_press(Message::AsText(!s.as_text)),
             text_input("Suchen", &s.search)
                 .on_input(Message::SearchInput)
                 .on_submit(Message::Search)
@@ -335,6 +338,28 @@ fn center(s: &State) -> Element<'_, Message> {
             });
         list = list.push(message(s, m, false, compact));
         prev = Some(m);
+    }
+    if s.as_text {
+        let all = crate::text::transcript(&s.messages);
+        let bar = row![
+            text("Ziehen markiert, Strg+C kopiert, Esc zurück.")
+                .size(12)
+                .color(look.muted)
+                .width(Length::Fill),
+            small(look, "Alles kopieren").on_press(Message::Copy(all.clone())),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .padding([4, 16]);
+        let body = scrollable(
+            container(iced_selection::text(all).font(look.font(false)))
+                .padding([8, 16])
+                .width(Length::Fill),
+        )
+        .anchor_bottom()
+        .height(Length::Fill)
+        .width(Length::Fill);
+        return column![header, bar, body, composer(s, &space.name)].into();
     }
     let messages = scrollable(list)
         .id(MESSAGES)
@@ -566,35 +591,13 @@ fn message<'a>(s: &'a State, m: &'a Msg, in_thread: bool, compact: bool) -> Elem
     let look = &s.look;
     let time = time(m.created);
     let body: Element<'a, Message> = match s.md.get(&m.id) {
-        // Markier-Modus: schreibgeschützter Editor, Maus markiert, Strg+C kopiert.
-        _ if s.selecting.as_ref().is_some_and(|(id, _)| id == &m.id) => {
-            let (_, content) = s.selecting.as_ref().expect("geprüft");
-            let selected = content.selection().unwrap_or_else(|| m.text.clone());
-            column![
-                text_editor(content).font(look.font(false)).on_action(|a| {
-                    if a.is_edit() {
-                        Message::Ignore
-                    } else {
-                        Message::SelectAction(a)
-                    }
-                }),
-                row![
-                    text("Markieren mit Maus oder Shift+Pfeil · Strg+C kopiert")
-                        .size(11)
-                        .color(look.muted),
-                    small(look, "Kopieren").on_press(Message::Copy(selected)),
-                    small(look, "Fertig").on_press(Message::Select(None)),
-                ]
-                .spacing(8)
-                .align_y(Alignment::Center),
-            ]
-            .spacing(2)
-            .into()
-        }
         // Nur Emojis: groß wie bei Mattermost/Slack.
-        _ if crate::text::emoji_only(&m.text) => text(m.text.trim()).size(34).into(),
+        // iced_selection: Text mit der Maus markierbar, Strg+C kopiert.
+        _ if crate::text::emoji_only(&m.text) => {
+            iced_selection::text(m.text.trim()).size(34).into()
+        }
         Some(items) => markdown::view_with(items, look.markdown(), &EmojiViewer),
-        None => text(&m.text).font(look.font(false)).into(),
+        None => iced_selection::text(&m.text).font(look.font(false)).into(),
     };
     let body: Element<'a, Message> = if m.mentions_me && !m.mine {
         container(body)
@@ -770,13 +773,7 @@ fn message<'a>(s: &'a State, m: &'a Msg, in_thread: bool, compact: bool) -> Elem
             }))
         ]
         .spacing(2);
-    actions = actions.push(small(look, "⎘").on_press(Message::Select(
-        if s.selecting.as_ref().is_some_and(|(id, _)| id == &m.id) {
-            None
-        } else {
-            Some(m.clone())
-        },
-    )));
+    actions = actions.push(small(look, "⎘").on_press(Message::Copy(m.text.clone())));
     if !in_thread && m.thread_id.is_some() {
         actions = actions.push(small(look, "↩").on_press(Message::OpenThread(m.clone())));
     }
@@ -1228,9 +1225,19 @@ impl<'a> markdown::Viewer<'a, Message> for EmojiViewer {
                 spans.push(s);
             }
         }
-        iced::widget::rich_text(spans)
+        iced_selection::rich_text(spans)
             .size(settings.text_size)
             .on_link_click(Self::on_link_click)
             .into()
+    }
+
+    fn code_block(
+        &self,
+        settings: markdown::Settings,
+        _language: Option<&'a str>,
+        _code: &'a str,
+        lines: &'a [markdown::Text],
+    ) -> Element<'a, Message> {
+        iced_selection::markdown::code_block(settings, lines, Self::on_link_click)
     }
 }

@@ -24,6 +24,7 @@ base64 = "0.23.1"
 minisign-verify = "0.3"
 self-replace = "1.5"
 arboard = { version = "3.7.0", default-features = false, features = ["image-data", "wayland-data-control"] }
+iced_selection = { version = "0.5.0", features = ["markdown"] }
 
 # Installer: `cargo packager --release -p chatty-native` (deb, AppImage, NSIS, dmg je nach System).
 [package.metadata.packager]

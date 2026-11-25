@@ -151,8 +151,8 @@ pub struct State {
     pub thumbs: HashMap<PathBuf, image::Handle>,
     /// Formatierte Vorschau des Eingabetexts (an, wenn `Some`).
     pub preview: Option<Vec<markdown::Item>>,
-    /// Nachricht im Markier-Modus: Text in einem schreibgeschützten Editor zum Auswählen und Kopieren.
-    pub selecting: Option<(String, text_editor::Content)>,
+    /// Verlauf als ein markierbarer Text (über Nachrichten hinweg markieren und kopieren).
+    pub as_text: bool,
     pub sending: bool,
     pub show_down: bool,
     pub rhs: Option<Rhs>,
@@ -211,10 +211,10 @@ pub enum Message {
     PasteImage,
     Pasted(Option<Vec<u8>>),
     Preview,
-    /// Markier-Modus für eine Nachricht an/aus.
-    Select(Option<Msg>),
-    SelectAction(text_editor::Action),
+    /// Ganze Nachricht in die Zwischenablage (Teile: im Verlauf markieren, Strg+C).
     Copy(String),
+    /// Textansicht des Verlaufs an/aus.
+    AsText(bool),
     RemoveFile(usize),
     Save(Attachment),
     Saved(String, Result<bool, String>),
@@ -317,7 +317,7 @@ fn boot() -> (State, Task<Message>) {
         files: Vec::new(),
         thumbs: HashMap::new(),
         preview: None,
-        selecting: None,
+        as_text: false,
         sending: false,
         show_down: false,
         rhs: None,
@@ -991,7 +991,8 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
             }
         }
         Message::Escape => {
-            if s.selecting.take().is_some() {
+            if s.as_text {
+                s.as_text = false;
             } else if s.editing.take().is_some() {
                 s.composer = text_editor::Content::new();
             } else if s.picker.is_some() || s.confirm_delete.is_some() {
@@ -1074,25 +1075,12 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
             Ok(path) => update(s, Message::Picked(vec![path])),
             Err(e) => s.error(e.to_string()),
         },
-        Message::Select(m) => {
-            s.selecting = m.map(|m| {
-                let mut c = text_editor::Content::with_text(&m.text);
-                c.perform(text_editor::Action::SelectAll);
-                (m.id, c)
-            });
-            Task::none()
-        }
-        Message::SelectAction(action) => {
-            if let Some((_, c)) = &mut s.selecting
-                && !action.is_edit()
-            {
-                c.perform(action);
-            }
+        Message::AsText(on) => {
+            s.as_text = on;
             Task::none()
         }
         Message::Copy(text) => Task::batch([
             iced::clipboard::write(text),
-            update(s, Message::Select(None)),
             s.toast("Text kopiert", ToastKind::Info, None),
         ]),
         Message::Save(att) => {
@@ -1779,6 +1767,8 @@ fn subscription(s: &State) -> Subscription<Message> {
             modifiers,
             ..
         } if modifiers.command() && !modifiers.alt() => match c.as_str() {
+            // Strg+Umschalt+A: Textansicht des Verlaufs.
+            "a" | "A" if modifiers.shift() => Message::AsText(true),
             "+" | "=" => Message::ZoomStep(1),
             "-" => Message::ZoomStep(-1),
             "0" => Message::Zoom(1.0),

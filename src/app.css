@@ -138,6 +138,8 @@ select {
 
 a {
   color: var(--link);
+  /* Ziehen auf einem Link markiert Text (WebKit würde sonst den Link als Ganzes ziehen). */
+  -webkit-user-drag: none;
 }
 
 code {

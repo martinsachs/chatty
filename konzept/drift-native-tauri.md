@@ -35,7 +35,7 @@ offen, mit Grund).
 | Mattermost: Kanal-Header (erste Zeile, Markdown mit klickbaren Links) unter dem Kanalnamen; Retro-Optiken einzeilig „Name: Header“; Änderung per WebSocket `channel_updated` (Auftrag 2026-11-23) | – | gleich (beide; Tooltip mit ganzem Header nur Tauri) |
 | Bildvorschau angehängter Bilder (max. 400×300, Klick speichert); Mattermost `/files/{id}/preview`, Google Original bis 10 MiB (Auftrag 2026-11-24) | – | gleich (beide; native dekodiert bis 4096×4096) |
 | Schriftgröße 80–200 % in Darstellung und per Strg + Plus/Minus/0 (Auftrag 2026-11-24) | – | gleich (beide; Tauri WebView-Zoom, native `scale_factor`) |
-| Text kopieren: Tauri markiert direkt im Verlauf, ⎘ kopiert die ganze Nachricht; native ⎘ = Markier-Modus (schreibgeschützter Editor, iced kann Markdown-Text nicht markieren) (Auftrag 2026-11-25) | – | Abweichung (Technik) |
+| Text im Verlauf markieren und mit Strg+C kopieren, ⎘ kopiert die ganze Nachricht (Auftrag 2026-11-25) | – | gleich (beide; native über `iced_selection`, Auswahl je Absatz; über Nachrichten hinweg nur in der Textansicht „Als Text“, Strg+Umschalt+A) |
 | Bild per Strg+V als Anhang mit Vorschaubild, auch für gewählte Bilder; Text in der Zwischenablage hat Vorrang (Auftrag 2026-11-25) | – | gleich (beide; native liest Bilder über `arboard`) |
 | Formatierte Vorschau des Eingabetexts (👁) (Auftrag 2026-11-25) | – | gleich (beide; nur Hauptfeld, nicht im Thread) |
 | Emojis im Text 1,3× Schriftgröße, Nachricht nur aus Emojis groß; native setzt Farb-Emoji-Schrift ausdrücklich (sonst Schwarz-Weiß-Glyphen aus DejaVu Sans) (Auftrag 2026-11-24) | – | gleich (beide) |

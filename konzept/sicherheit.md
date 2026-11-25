@@ -87,7 +87,8 @@ Tauri: Rohdaten per IPC-Body an `paste_image`, das Frontend erhält nur ID und N
 `avatar://localhost/picked/<id>` nur für vorgemerkte IDs und Bildendungen, bis 10 MiB, mit derselben
 Typ-Whitelist. Native liest die Zwischenablage nur bei Strg+V im Eingabefeld. Die Textvorschau nutzt
 `formatText` (Tauri, Fuzz-geprüft) bzw. den Markdown-Viewer (native, ohne Raw-HTML). Kopieren schreibt nur
-Nachrichtentext in die Zwischenablage. Neue Abhängigkeit `arboard` 3.7.0 (native); `cargo audit` ohne neue Funde.
+Nachrichtentext in die Zwischenablage. Neue Abhängigkeiten (native): `arboard` 3.7.0, `iced_selection` 0.5.0 (MIT, reiner Widget-Code ohne `unsafe`,
+Datei- oder Netzzugriff, gelesen); `cargo audit` ohne neue Funde.
 
 ## Offen (bewusst nicht umgesetzt)
 

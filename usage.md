@@ -127,7 +127,7 @@ macOS `~/Library/Application Support/chatty`). Er darf gelöscht werden.
 | Datei laden | Anhang anklicken → Speicherort wählen |
 | Bild einfügen | Bildschirmfoto oder kopiertes Bild mit Strg+V ins Eingabefeld: wird als Anhang `bild-<Zeit>.png` vorgemerkt, mit Vorschaubild über dem Feld (auch für per 📎 gewählte Bilder). Enthält die Zwischenablage auch Text, wird der Text eingefügt |
 | Vorschau | 👁 unter dem Eingabefeld zeigt den Text formatiert (fett, Links, Emojis), wie er gesendet erscheint |
-| Text kopieren | Tauri: Text mit der Maus markieren, Strg+C; ⎘ beim Überfahren kopiert die ganze Nachricht. Native: ⎘ öffnet die Nachricht zum Markieren (Maus, Shift+Pfeile, Strg+A), Strg+C oder „Kopieren“ übernimmt die Auswahl, „Fertig“ oder Esc beendet |
+| Text kopieren | Text im Verlauf mit der Maus markieren (Doppelklick Wort, Dreifachklick Zeile), Strg+C; ⎘ beim Überfahren kopiert die ganze Nachricht. Native markiert im Verlauf je Absatz; über mehrere Nachrichten hinweg: „Als Text“ im Kanalkopf (Strg+Umschalt+A) zeigt den geladenen Verlauf als einen Text, darin beliebig markieren oder „Alles kopieren“, Esc zurück |
 | Suchen | Suchfeld oben rechts, Enter; Treffer anklicken springt in den Space |
 | Chat in eigenem Fenster | ⧉ oben rechts |
 | Ältere Nachrichten | nach oben scrollen |
