@@ -1,6 +1,6 @@
 # Änderungen
 
-## Unveröffentlicht
+## 0.2.5 – 2026-11-25
 
 **Neu** (beide Varianten)
 - Text kopieren: ⎘ an jeder Nachricht. Native Variante: Nachricht zum Markieren öffnen, Strg+C kopiert die

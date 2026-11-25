@@ -1,6 +1,6 @@
 [package]
 name = "chatty-core"
-version = "0.2.4"
+version = "0.2.5"
 description = "chatty: Backends (Google Chat, Mattermost), Cache, Konfiguration, Kontoverwaltung – ohne Oberfläche"
 edition = "2024"
 license = "Apache-2.0"
