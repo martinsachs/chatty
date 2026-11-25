@@ -1,6 +1,7 @@
 // Zentraler UI-Zustand. Ein Fenster = eine Instanz (Hauptfenster oder abgelöstes Chatfenster).
 import { listen } from "@tauri-apps/api/event";
-import { api, emojiSrc, type AccountInfo, type ChatEvent, type Message, type Space, type Theme } from "./api";
+import { api, emojiSrc, type AccountInfo, type ChatEvent, type Message, type Presence, type Space, type Theme } from "./api";
+import { PRESENCE_LABELS } from "./presence";
 import { playNotificationSound } from "./sound";
 
 export interface Toast {
@@ -20,6 +21,8 @@ class Chat {
   theme = $state<Theme>("mattermost");
   notifications = $state(true);
   sound = $state(false);
+  /** Konto-ID → eigener Online-Status; fehlt, wenn das Backend keinen kennt (Google). */
+  ownPresence = $state<Record<string, Presence>>({});
   googleConfigured = $state(false);
   googleClientId = $state("");
   accounts = $state<AccountInfo[]>([]);
@@ -106,6 +109,13 @@ class Chat {
     } catch (e) {
       this.toast(`Spaces laden: ${e}`, "error");
     }
+    const presence = await api.ownPresence(account).catch(() => null);
+    if (presence) this.ownPresence = { ...this.ownPresence, [account]: presence };
+  }
+
+  async setPresence(account: string, presence: Presence) {
+    this.ownPresence = { ...this.ownPresence, [account]: presence };
+    await this.guard(api.setPresence(account, presence, PRESENCE_LABELS[presence]));
   }
 
   /** Favorit / Stumm umschalten (sofort in der Liste, Server bzw. lokal im Hintergrund). */
@@ -363,6 +373,9 @@ class Chat {
           if (account === this.account) this.catchUp();
         }
         else if (event.detail && !this.popout) this.toast(`${acc?.label ?? "Konto"}: ${event.detail}`, "error");
+        break;
+      case "own_presence":
+        this.ownPresence = { ...this.ownPresence, [account]: event.presence };
         break;
       case "space_updated": {
         const list = this.spaces[account] ?? [];

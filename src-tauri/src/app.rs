@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use chatty_core::app::file_name;
 use chatty_core::error::{Error, Result};
-use chatty_core::model::{Account, Attachment, BackendEvent, Message, Page, Space};
+use chatty_core::model::{Account, Attachment, BackendEvent, Message, Page, Presence, Space};
 use chatty_core::{App, AppInfo};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -386,6 +386,21 @@ pub async fn search(
 #[tauri::command]
 pub async fn mark_read(state: State<'_, AppState>, account: String, space: String) -> Cmd<()> {
     state.app.mark_read(&account, &space).await
+}
+
+#[tauri::command]
+pub async fn own_presence(state: State<'_, AppState>, account: String) -> Cmd<Option<Presence>> {
+    state.app.own_presence(&account).await
+}
+
+#[tauri::command]
+pub async fn set_presence(
+    state: State<'_, AppState>,
+    account: String,
+    presence: Presence,
+    text: String,
+) -> Cmd<()> {
+    state.app.set_presence(&account, presence, &text).await
 }
 
 /// Meldet den offenen Space (Polling-Priorität, Benachrichtigungen).

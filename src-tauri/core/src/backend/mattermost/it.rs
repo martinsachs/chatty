@@ -14,7 +14,9 @@ use tokio::sync::{mpsc, watch};
 use super::MattermostBackend;
 use crate::backend::ChatBackend;
 use crate::error::{Error, Result};
-use crate::model::{Account, Attachment, BackendEvent, BackendKind, SpaceKind, UploadFile};
+use crate::model::{
+    Account, Attachment, BackendEvent, BackendKind, Presence, SpaceKind, UploadFile,
+};
 use crate::secrets;
 
 type Rx = mpsc::UnboundedReceiver<(String, BackendEvent)>;
@@ -272,6 +274,46 @@ async fn scenario() -> Result<()> {
     .await?;
     anna.send_req(anna.req(Method::DELETE, "/users/me/status/custom"))
         .await?;
+
+    // Online-Status: Zwischenstufe „beschäftigt“ = dnd plus Status-Text. Den Text meldet der
+    // WebSocket (user_updated), den Status nur die Abfrage (status_change geht nur an anna selbst).
+    let partner_presence = |events: &[BackendEvent], presence: Presence| {
+        events.iter().any(|e| {
+            matches!(e, BackendEvent::SpaceUpdated { space }
+                if space.kind == SpaceKind::Direct && space.presence == Some(presence))
+        })
+    };
+    anna.set_presence(Presence::Busy, "Beschäftigt").await?;
+    wait_for(&mut rx, "user_updated → DM mit Status-Text", |e| {
+        matches!(e, BackendEvent::SpaceUpdated { space }
+            if space.kind == SpaceKind::Direct && space.status_emoji.as_deref() == Some("⛔"))
+    })
+    .await?;
+    check(
+        partner_presence(&me.poll_statuses().await?, Presence::Busy),
+        "Abfrage → DM beschäftigt",
+    )?;
+    anna.set_presence(Presence::Online, "").await?;
+    wait_for(&mut rx, "user_updated → DM ohne Status-Text", |e| {
+        matches!(e, BackendEvent::SpaceUpdated { space }
+            if space.kind == SpaceKind::Direct && space.status_emoji.is_none())
+    })
+    .await?;
+    check(
+        partner_presence(&me.poll_statuses().await?, Presence::Online),
+        "Abfrage → DM wieder online",
+    )?;
+    // Eigener Status: unsichtbar = offline von Hand, gemeldet als eigenes Ereignis.
+    me.set_presence(Presence::Invisible, "").await?;
+    wait_for(&mut rx, "eigener Status unsichtbar", |e| {
+        matches!(e, BackendEvent::OwnPresence { presence: Presence::Invisible })
+    })
+    .await?;
+    check(
+        me.own_presence().await? == Some(Presence::Invisible),
+        "own_presence nach Statuswechsel",
+    )?;
+    me.set_presence(Presence::Online, "").await?;
 
     // Favorit und Stumm: beim Server gespeichert, per WebSocket gemeldet, in der Liste sichtbar.
     check(

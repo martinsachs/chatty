@@ -226,6 +226,53 @@ pre code {
   vertical-align: -0.1em;
 }
 
+/* Online-Status (PresenceIcon.svelte): Punkt in der Statusfarbe; seequ.css zeichnet ein Kleeblatt. */
+:root {
+  --presence-online: #3cb043;
+  --presence-available-to-chat: #7ed957;
+  --presence-away: #f0b400;
+  --presence-not-available: #b8860b;
+  --presence-busy: #f07800;
+  --presence-do-not-disturb: #d42020;
+  --presence-offline: #a0a0a0;
+}
+.presence {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: var(--presence-color);
+  vertical-align: middle;
+}
+.presence[data-presence="online"] {
+  --presence-color: var(--presence-online);
+}
+.presence[data-presence="available_to_chat"] {
+  --presence-color: var(--presence-available-to-chat);
+}
+.presence[data-presence="away"] {
+  --presence-color: var(--presence-away);
+}
+.presence[data-presence="not_available"] {
+  --presence-color: var(--presence-not-available);
+}
+.presence[data-presence="busy"] {
+  --presence-color: var(--presence-busy);
+}
+.presence[data-presence="do_not_disturb"] {
+  --presence-color: var(--presence-do-not-disturb);
+}
+.presence[data-presence="offline"],
+.presence[data-presence="invisible"] {
+  --presence-color: var(--presence-offline);
+}
+/* Unsichtbar: nur der Rand, innen leer. */
+.presence[data-presence="invisible"] {
+  background: transparent;
+  border: 1.5px solid var(--presence-color);
+}
+
 /* Eigene Server-Emojis im Text, in Reaktionen und als Status. */
 img.emoji {
   height: 1.6em;

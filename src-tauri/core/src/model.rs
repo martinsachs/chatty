@@ -9,6 +9,23 @@ pub enum BackendKind {
     Mattermost,
 }
 
+/// Online-Status für die Anzeige (Punkt bzw. Kleeblatt) und das Statusmenü. Die Zwischenstufen
+/// (gesprächsbereit, nicht verfügbar, beschäftigt) bildet das Backend auf seinen Status plus einen
+/// Status-Text mit festem Emoji ab; andere Clients sehen dann den Grundstatus mit diesem Text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Presence {
+    Online,
+    AvailableToChat,
+    Away,
+    NotAvailable,
+    Busy,
+    DoNotDisturb,
+    /// Nur für den eigenen Status: angemeldet, aber für andere offline.
+    Invisible,
+    Offline,
+}
+
 /// Ein angemeldetes Konto. Enthält keine Geheimnisse (die liegen im Keyring).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Account {
@@ -54,6 +71,9 @@ pub struct Space {
     /// Status-Emoji des DM-Partners (Unicode oder ":name:" für eigene Server-Emojis).
     #[serde(default)]
     pub status_emoji: Option<String>,
+    /// Online-Status des DM-Partners; None, wenn das Backend keinen liefert.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presence: Option<Presence>,
     /// Kanal-Header (Markdown, z. B. Titel und Links); leer, wenn das Backend keinen liefert.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub header: String,
@@ -168,6 +188,10 @@ pub enum BackendEvent {
     },
     SpaceUpdated {
         space: Space,
+    },
+    /// Eigener Online-Status geändert (auch aus anderen Clients).
+    OwnPresence {
+        presence: Presence,
     },
     /// Verbindungszustand (z. B. WebSocket getrennt, Token abgelaufen).
     Status {

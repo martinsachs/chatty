@@ -48,6 +48,8 @@ pub fn run() {
             app::save_attachment,
             app::search,
             app::mark_read,
+            app::own_presence,
+            app::set_presence,
             app::set_active,
             app::open_space_window,
         ])

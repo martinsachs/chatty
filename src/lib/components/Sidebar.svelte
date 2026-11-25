@@ -2,6 +2,8 @@
   import { chat } from "$lib/chat.svelte";
   import { api, type Space } from "$lib/api";
   import { initials } from "$lib/format";
+  import PresenceIcon from "./PresenceIcon.svelte";
+  import StatusMenu from "./StatusMenu.svelte";
 
   let { onSettings }: { onSettings: () => void } = $props();
 
@@ -235,6 +237,7 @@
     <div class="sub">
       {chat.currentAccount ? (chat.currentAccount.kind === "google" ? "Google Chat" : "Mattermost") : ""}
       {#if chat.currentAccount && !chat.currentAccount.online}· getrennt{/if}
+      {#if chat.currentAccount?.online}· <StatusMenu account={chat.currentAccount.id} />{/if}
     </div>
   </header>
   <div class="tools">
@@ -276,7 +279,11 @@
               onpointerdown={(e) => startDrag(e, s)}
               onclick={() => open(s)}
             >
-              <span class="icon">{s.kind === "channel" ? "#" : s.kind === "direct" ? "●" : "◆"}</span>
+              <span class="icon"
+                >{#if s.kind === "direct" && s.presence && chat.currentAccount?.online}<PresenceIcon
+                    presence={s.presence}
+                  />{:else}{s.kind === "channel" ? "#" : s.kind === "direct" ? "●" : "◆"}{/if}</span
+              >
               <span class="name">{s.name}</span>
               {#if s.status_emoji}
                 {@const custom = /^:([a-z0-9_+-]+):$/.exec(s.status_emoji)}

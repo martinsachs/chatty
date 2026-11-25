@@ -15,7 +15,8 @@ use crate::backend::{Avatar, ChatBackend, EventSender, MAX_PREVIEW};
 use crate::config::{self, Config, GoogleConfig};
 use crate::error::{Error, Result};
 use crate::model::{
-    Account, Attachment, BackendEvent, BackendKind, Message, Page, Space, SpaceKind, UploadFile,
+    Account, Attachment, BackendEvent, BackendKind, Message, Page, Presence, Space, SpaceKind,
+    UploadFile,
 };
 use crate::secrets;
 use crate::store::Store;
@@ -267,7 +268,7 @@ impl App {
                     store.delete_message(account, message_id)
                 }
                 BackendEvent::SpaceUpdated { space } => store.put_space(account, space),
-                BackendEvent::Status { .. } => Ok(()),
+                BackendEvent::Status { .. } | BackendEvent::OwnPresence { .. } => Ok(()),
             }
         };
         if let Err(e) = cached {
@@ -686,6 +687,15 @@ impl App {
 
     pub async fn mark_read(&self, account: &str, space: &str) -> Result<()> {
         self.backend(account).await?.mark_read(space).await
+    }
+
+    /// Eigener Online-Status; None, wenn das Backend keinen kennt (Google).
+    pub async fn own_presence(&self, account: &str) -> Result<Option<Presence>> {
+        self.backend(account).await?.own_presence().await
+    }
+
+    pub async fn set_presence(&self, account: &str, presence: Presence, text: &str) -> Result<()> {
+        self.backend(account).await?.set_presence(presence, text).await
     }
 
     // ---------- Fenster-Zustand ----------

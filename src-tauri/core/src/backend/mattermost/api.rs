@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use super::emoji;
-use crate::model::{Attachment, Message, Reaction, Space, SpaceKind, User};
+use crate::model::{Attachment, Message, Presence, Reaction, Space, SpaceKind, User};
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -26,6 +26,11 @@ pub struct UserProps {
 impl ApiUser {
     /// Status-Emoji als Unicode bzw. ":name:", sofern gesetzt und nicht abgelaufen.
     pub fn status_emoji(&self, now_ms: i64) -> Option<String> {
+        self.status_emoji_name(now_ms).map(|name| emoji::to_unicode(&name))
+    }
+
+    /// Emoji-Name des Status-Texts (z. B. "palm_tree"), sofern gesetzt und nicht abgelaufen.
+    pub fn status_emoji_name(&self, now_ms: i64) -> Option<String> {
         let v: serde_json::Value = serde_json::from_str(&self.props.custom_status).ok()?;
         let name = v.get("emoji")?.as_str().filter(|e| !e.is_empty())?;
         let expires = v
@@ -37,7 +42,53 @@ impl ApiUser {
         if expires.is_some_and(|t| t <= now_ms) {
             return None;
         }
-        Some(emoji::to_unicode(name))
+        Some(name.to_string())
+    }
+}
+
+/// Mattermost-Status aus `/users/status/ids`, `/users/me/status` bzw. dem Ereignis `status_change`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct ApiStatus {
+    pub user_id: String,
+    /// `online`, `away`, `dnd` oder `offline`.
+    pub status: String,
+}
+
+/// Status-Text-Emojis der Zwischenstufen: chatty setzt sie und erkennt daran die Stufe.
+const AVAILABLE_TO_CHAT_EMOJI: &str = "speech_balloon";
+const NOT_AVAILABLE_EMOJI: &str = "zzz";
+const BUSY_EMOJI: &str = "no_entry";
+
+/// Ist der Status-Text einer, den chatty für eine Zwischenstufe gesetzt hat?
+pub fn is_presence_emoji(name: &str) -> bool {
+    [AVAILABLE_TO_CHAT_EMOJI, NOT_AVAILABLE_EMOJI, BUSY_EMOJI].contains(&name)
+}
+
+/// Anzeige-Status aus Mattermost-Status und Status-Text-Emoji. `offline` gilt als offline; ob es
+/// „unsichtbar“ ist, weiß nur der eigene Client.
+pub fn presence(status: &str, emoji_name: Option<&str>) -> Presence {
+    match (status, emoji_name) {
+        ("online", Some(AVAILABLE_TO_CHAT_EMOJI)) => Presence::AvailableToChat,
+        ("online", _) => Presence::Online,
+        ("away", Some(NOT_AVAILABLE_EMOJI)) => Presence::NotAvailable,
+        ("away", _) => Presence::Away,
+        ("dnd", Some(BUSY_EMOJI)) => Presence::Busy,
+        ("dnd", _) => Presence::DoNotDisturb,
+        _ => Presence::Offline,
+    }
+}
+
+/// Mattermost-Status und Status-Text-Emoji für einen gewählten Status.
+pub fn mattermost_status(presence: Presence) -> (&'static str, Option<&'static str>) {
+    match presence {
+        Presence::Online => ("online", None),
+        Presence::AvailableToChat => ("online", Some(AVAILABLE_TO_CHAT_EMOJI)),
+        Presence::Away => ("away", None),
+        Presence::NotAvailable => ("away", Some(NOT_AVAILABLE_EMOJI)),
+        Presence::DoNotDisturb => ("dnd", None),
+        Presence::Busy => ("dnd", Some(BUSY_EMOJI)),
+        Presence::Invisible | Presence::Offline => ("offline", None),
     }
 }
 
@@ -280,6 +331,7 @@ pub fn map_channel(
         msg_count: ch.total_msg_count,
         favorite,
         status_emoji: None,
+        presence: None,
         muted: member.is_some_and(|m| m.notify_props.mark_unread == "mention"),
         header: ch.header.clone(),
     }
@@ -307,6 +359,24 @@ mod tests {
             },
         );
         m
+    }
+
+    #[test]
+    fn presence_round_trip() {
+        for chosen in [
+            Presence::Online,
+            Presence::AvailableToChat,
+            Presence::Away,
+            Presence::NotAvailable,
+            Presence::Busy,
+            Presence::DoNotDisturb,
+            Presence::Offline,
+        ] {
+            let (status, emoji) = mattermost_status(chosen);
+            assert_eq!(presence(status, emoji), chosen, "{chosen:?}");
+        }
+        assert_eq!(presence("online", Some("palm_tree")), Presence::Online, "fremder Status-Text");
+        assert_eq!(mattermost_status(Presence::Invisible), ("offline", None));
     }
 
     #[test]

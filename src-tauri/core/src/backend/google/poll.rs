@@ -347,6 +347,7 @@ mod tests {
             favorite: false,
             muted: false,
             status_emoji: None,
+            presence: None,
             header: String::new(),
         };
         let prev: HashMap<_, _> = [s("a", 1, false), s("b", 1, false)]
