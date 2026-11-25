@@ -16,11 +16,21 @@ export interface AccountInfo extends Account {
   online: boolean;
 }
 
+/** GIF-Suchergebnis; `preview` ist eine data:-URL. */
+export interface Gif {
+  title: string;
+  url: string;
+  preview: string;
+}
+
 export interface AppInfo {
   theme: Theme;
   notifications: boolean;
   google_configured: boolean;
   google_client_id: string;
+  /** Host des GIF-Anbieters; null = GIF-Suche aus. */
+  gif_provider: string | null;
+  gif_api_url: string;
   accounts: AccountInfo[];
 }
 
@@ -105,6 +115,8 @@ export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
   setSettings: (theme: string, notifications: boolean) =>
     invoke<void>("set_settings", { theme, notifications }),
+  setGifConfig: (apiUrl: string, apiKey: string) => invoke<void>("set_gif_config", { apiUrl, apiKey }),
+  searchGifs: (query: string) => invoke<Gif[]>("search_gifs", { query }),
   setGoogleClient: (clientId: string, clientSecret: string) =>
     invoke<void>("set_google_client", { clientId, clientSecret }),
   addGoogle: (accountId?: string) => invoke<Account>("add_google_account", { accountId }),
@@ -115,6 +127,8 @@ export const api = {
   listSpaces: (account: string) => invoke<Space[]>("list_spaces", { account }),
   browseSpaces: (account: string, query: string) => invoke<Space[]>("browse_spaces", { account, query }),
   customEmojis: (account: string) => invoke<string[]>("custom_emojis", { account }),
+  /** Unicode-Emojis als [Kurzname, Emoji] für den Emoji-Picker. */
+  emojiCatalog: () => invoke<[string, string][]>("emoji_catalog"),
   joinSpace: (account: string, space: string) => invoke<Space>("join_space", { account, space }),
   setSpaceFlag: (account: string, space: string, flag: { favorite?: boolean; muted?: boolean }) =>
     invoke<void>("set_space_flag", { account, space, favorite: flag.favorite ?? null, muted: flag.muted ?? null }),

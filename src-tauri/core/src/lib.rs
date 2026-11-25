@@ -5,6 +5,7 @@ pub mod app;
 pub mod backend;
 pub mod config;
 pub mod error;
+pub mod gif;
 pub mod model;
 pub mod secrets;
 pub mod store;

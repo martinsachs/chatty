@@ -20,6 +20,9 @@ class Chat {
   notifications = $state(true);
   googleConfigured = $state(false);
   googleClientId = $state("");
+  /** Host des GIF-Anbieters; null = GIF-Suche aus (Standard). */
+  gifProvider = $state<string | null>(null);
+  gifApiUrl = $state("");
   accounts = $state<AccountInfo[]>([]);
   /** Konto-ID → Spaces */
   spaces = $state<Record<string, Space[]>>({});
@@ -68,6 +71,8 @@ class Chat {
     this.notifications = info.notifications;
     this.googleConfigured = info.google_configured;
     this.googleClientId = info.google_client_id;
+    this.gifProvider = info.gif_provider;
+    this.gifApiUrl = info.gif_api_url;
     this.accounts = info.accounts;
     if (!this.account && this.accounts.length) this.account = this.accounts[0].id;
   }

@@ -2,6 +2,7 @@
 
 mod api;
 mod emoji;
+pub use emoji::catalog as emoji_catalog;
 mod emoji_table;
 mod ws;
 

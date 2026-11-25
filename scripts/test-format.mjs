@@ -18,6 +18,11 @@ assert.equal(
   formatText("[Doku](https://x.de/d)"),
   '<a href="https://x.de/d" title="https://x.de/d" target="_blank" rel="noreferrer">Doku</a>',
 );
+// Markdown-Bild (gesendetes GIF): Link mit 🖼 statt Bild.
+assert.equal(
+  formatText("![Cat <3](https://media.example/cat.gif)"),
+  '<a href="https://media.example/cat.gif" title="https://media.example/cat.gif" target="_blank" rel="noreferrer">🖼 Cat &lt;3</a>',
+);
 assert.equal(formatText("**fett** _kursiv_ `a<b`"), "<strong>fett</strong> <em>kursiv</em> <code>a&lt;b</code>");
 assert.equal(formatText("hi @anna\nzwei"), 'hi <span class="mention">@anna</span><br>zwei');
 assert.equal(

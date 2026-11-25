@@ -85,11 +85,18 @@ notifications = true      # Desktop-Benachrichtigungen
 client_id = "..."
 client_secret = "..."
 
+[gif]                     # GIF-Suche, optional; ohne diesen Abschnitt aus
+api_url = "https://api.giphy.com/v1/gifs"   # GIPHY-kompatible API (z. B. GIPHY, heypster), nur https
+api_key = "..."
+
 [poll]                    # nur Google Chat
 active_secs = 5           # offener Space, solange ein chatty-Fenster den Fokus hat
                           # (ohne Fokus läuft er im Takt der Space-Liste mit)
 spaces_secs = 20          # Space-Liste / Ungelesen
 ```
+
+Die GIF-Suche schickt Suchbegriffe und die IP-Adresse an den eingetragenen Anbieter. Schalte sie nur ein,
+wenn deine Organisation das erlaubt (Auftragsverarbeitung). Einrichten auch unter **+ → Darstellung**.
 
 Optik und Benachrichtigungen lassen sich auch unter **+ → Darstellung** ändern, dort auch die Schriftgröße
 (nicht in `chatty.toml`: Tauri merkt sie in der WebView, native in `native.json`). Längere

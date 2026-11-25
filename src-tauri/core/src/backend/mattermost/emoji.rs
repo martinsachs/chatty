@@ -1,7 +1,7 @@
 //! Zuordnung Mattermost-Emoji-Name ↔ Unicode (vollständige Liste aus `emoji_table.rs`) und Ersetzen von
 //! Kurzcodes wie `:smile:` im Nachrichtentext.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 use super::emoji_table::TABLE;
@@ -9,6 +9,16 @@ use super::emoji_table::TABLE;
 fn by_name() -> &'static HashMap<&'static str, &'static str> {
     static MAP: OnceLock<HashMap<&str, &str>> = OnceLock::new();
     MAP.get_or_init(|| TABLE.iter().copied().collect())
+}
+
+/// Alle Unicode-Emojis mit bevorzugtem Namen (Name, Emoji) in Datensatz-Reihenfolge, für den Emoji-Picker.
+pub fn catalog() -> Vec<(&'static str, &'static str)> {
+    let mut seen = HashSet::new();
+    TABLE
+        .iter()
+        .copied()
+        .filter(|(_, emoji)| seen.insert(*emoji))
+        .collect()
 }
 
 /// Ohne Variationsselektor (U+FE0F) vergleichen, damit "❤" und "❤️" gleich sind.
@@ -100,6 +110,15 @@ mod tests {
     fn variation_selector_ignored() {
         assert_eq!(to_name("❤"), "heart");
         assert_eq!(to_name("❤️"), "heart");
+    }
+
+    #[test]
+    fn catalog_has_each_emoji_once_with_preferred_name() {
+        let list = catalog();
+        let unique: HashSet<&str> = list.iter().map(|(_, emoji)| *emoji).collect();
+        assert_eq!(unique.len(), list.len());
+        assert!(list.contains(&("smile", "😄")));
+        assert!(list.contains(&("+1", "👍")), "erster Name, nicht thumbsup");
     }
 
     #[test]

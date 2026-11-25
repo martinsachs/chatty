@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
+use crate::gif::GifConfig;
 use crate::model::Account;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -41,6 +42,8 @@ pub struct Config {
     /// OS-Benachrichtigungen bei DMs und Erwähnungen.
     pub notifications: bool,
     pub google: Option<GoogleConfig>,
+    /// GIF-Suche (GIPHY-kompatible API); fehlt der Abschnitt, ist sie aus.
+    pub gif: Option<GifConfig>,
     pub poll: PollConfig,
 }
 
@@ -50,6 +53,7 @@ impl Default for Config {
             theme: "mattermost".into(),
             notifications: true,
             google: None,
+            gif: None,
             poll: PollConfig::default(),
         }
     }

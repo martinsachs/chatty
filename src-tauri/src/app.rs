@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use chatty_core::app::file_name;
 use chatty_core::error::{Error, Result};
+use chatty_core::gif::Gif;
 use chatty_core::model::{Account, Attachment, BackendEvent, Message, Page, Space};
 use chatty_core::{App, AppInfo};
 use serde::Serialize;
@@ -150,6 +151,16 @@ pub fn set_google_client(
 }
 
 #[tauri::command]
+pub fn set_gif_config(state: State<'_, AppState>, api_url: String, api_key: String) -> Cmd<()> {
+    state.app.set_gif_config(&api_url, &api_key)
+}
+
+#[tauri::command]
+pub async fn search_gifs(state: State<'_, AppState>, query: String) -> Cmd<Vec<Gif>> {
+    state.app.search_gifs(&query).await
+}
+
+#[tauri::command]
 pub async fn add_google_account(
     state: State<'_, AppState>,
     account_id: Option<String>,
@@ -214,6 +225,12 @@ pub async fn set_space_flag(
 #[tauri::command]
 pub async fn custom_emojis(state: State<'_, AppState>, account: String) -> Cmd<Vec<String>> {
     state.app.custom_emojis(&account).await
+}
+
+/// Unicode-Emojis (Name, Emoji) für den Emoji-Picker; für alle Konten gleich.
+#[tauri::command]
+pub fn emoji_catalog() -> Vec<(&'static str, &'static str)> {
+    chatty_core::backend::mattermost::emoji_catalog()
 }
 
 #[tauri::command]
