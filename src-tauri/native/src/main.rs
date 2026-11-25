@@ -1585,7 +1585,7 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
             update(s, *action)
         }
         Message::Event(account, mut event) => {
-            if let Some(n) = s.app.handle_event(&account, &mut event) {
+            if let Some(n) = s.app.handle_event(&account, &mut event).notification {
                 notify(n);
             }
             let current = s.account.as_ref() == Some(&account);

@@ -164,6 +164,7 @@
             <option value="ehex">ehex</option>
             <option value="mirc">mIRC</option>
             <option value="dos">DOS (Norton Commander)</option>
+            <option value="seequ">seequ (Messenger 2001, mit Ton)</option>
           </select>
         </label>
         <label class="field">
@@ -175,6 +176,10 @@
         <label class="check">
           <input type="checkbox" bind:checked={notifications} onchange={saveSettings} />
           Desktop-Benachrichtigungen bei Direktnachrichten und Erwähnungen
+        </label>
+        <label class="check">
+          <input type="checkbox" checked={chat.sound} onchange={(e) => chat.saveSound(e.currentTarget.checked)} />
+          Ton bei Direktnachrichten und Erwähnungen
         </label>
       {/if}
       {#if busy}<p class="muted">Bitte warten … (Google: Anmeldung im Browser abschließen)</p>{/if}

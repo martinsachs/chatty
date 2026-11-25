@@ -1,0 +1,165 @@
+/*
+ * Optik "seequ": Messenger um 2001 (Windows-2000-Fenster, Kontaktliste, „Name (12:34)“ über dem Text).
+ * Kein Logo eines echten Messengers; Status als Punkt. Ton „Uh-oh“ in src/lib/sound.ts (THEME_SOUNDS).
+ * Präfix `html:root[...]` schlägt die Svelte-Klassen (.x.svelte-hash) per Spezifität, wie in retro.css.
+ */
+
+:root[data-theme="seequ"] {
+  --font: Tahoma, Verdana, "Segoe UI", "DejaVu Sans", sans-serif;
+  --rail-bg: #d4d0c8;
+  --sidebar-bg: #ffffff;
+  --sidebar-header-bg: #d4d0c8;
+  --sidebar-text: #000000;
+  --sidebar-text-strong: #000000;
+  --sidebar-hover: #e8f0e0;
+  --sidebar-active-bg: #c8e6c0;
+  --sidebar-active-bar: transparent;
+  --badge-bg: #2e9a3a;
+  --badge-text: #ffffff;
+  --mention-bg: #d42020;
+  --center-bg: #ffffff;
+  --text: #000000;
+  --text-muted: #6b6b6b;
+  --border: #808080;
+  --hover: #f4f4f0;
+  --accent: #2e9a3a;
+  --accent-text: #ffffff;
+  --link: #0000cc;
+  --mention-text: #d42020;
+  --mention-highlight: #fff8c4;
+  --online: #2e9a3a;
+  --error: #d42020;
+  --avatar-radius: 0;
+  --channel-prefix: "";
+  --radius: 0;
+  --header-height: 28px;
+  --seequ-face: #d4d0c8;
+  --seequ-light: #ffffff;
+  --seequ-shadow: #808080;
+}
+
+html:root[data-theme="seequ"] body {
+  font-size: 12px;
+}
+html:root[data-theme="seequ"] * {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Titelleisten wie Windows-2000-Fenster. */
+html:root[data-theme="seequ"] .center > header,
+html:root[data-theme="seequ"] .rhs > header {
+  background: linear-gradient(90deg, #0a246a, #a6caf0);
+  color: #ffffff;
+  border-bottom: none;
+}
+html:root[data-theme="seequ"] .center > header .icon-btn {
+  color: #ffffff;
+}
+html:root[data-theme="seequ"] .center > header .search {
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid var(--seequ-shadow);
+  padding: 1px 4px;
+}
+
+/* Nachrichtenfenster: „Name (12:34)“ in Farbe, Text darunter, ohne Avatare. */
+html:root[data-theme="seequ"] .msg {
+  padding: 2px 10px;
+}
+html:root[data-theme="seequ"] .gutter {
+  display: none;
+}
+html:root[data-theme="seequ"] .msg .head {
+  gap: 0.5ch;
+}
+html:root[data-theme="seequ"] .msg .sender {
+  color: #0000cc;
+  font-weight: bold;
+}
+html:root[data-theme="seequ"] .msg .time {
+  color: #0000cc;
+  font-size: inherit;
+}
+html:root[data-theme="seequ"] .msg .time::before {
+  content: "(";
+}
+html:root[data-theme="seequ"] .msg .time::after {
+  content: ")";
+}
+html:root[data-theme="seequ"] .msg.mentioned {
+  background: var(--mention-highlight);
+}
+html:root[data-theme="seequ"] .msg.mentioned .sender,
+html:root[data-theme="seequ"] .msg.mentioned .time {
+  color: #d42020;
+}
+html:root[data-theme="seequ"] .msg:hover {
+  background: var(--hover);
+}
+
+/* Erhabene Schaltflächen, vertiefte Eingabefelder. */
+html:root[data-theme="seequ"] .team,
+html:root[data-theme="seequ"] .btn,
+html:root[data-theme="seequ"] .act,
+html:root[data-theme="seequ"] .toast {
+  background: var(--seequ-face);
+  color: #000000;
+  border: 2px solid;
+  border-color: var(--seequ-light) var(--seequ-shadow) var(--seequ-shadow) var(--seequ-light);
+  font-weight: normal;
+}
+html:root[data-theme="seequ"] .team.active,
+html:root[data-theme="seequ"] .btn:active {
+  border-color: var(--seequ-shadow) var(--seequ-light) var(--seequ-light) var(--seequ-shadow);
+}
+html:root[data-theme="seequ"] .toast button {
+  color: #000000;
+}
+html:root[data-theme="seequ"] .sidebar .filter,
+html:root[data-theme="seequ"] .sidebar .sort,
+html:root[data-theme="seequ"] .composer textarea,
+html:root[data-theme="seequ"] .field input,
+html:root[data-theme="seequ"] .field select {
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid;
+  border-color: var(--seequ-shadow) var(--seequ-light) var(--seequ-light) var(--seequ-shadow);
+}
+html:root[data-theme="seequ"] .composer {
+  background: var(--seequ-face);
+  padding: 4px;
+  margin: 0;
+  border-width: 1px 0 0;
+}
+
+/* Kontaktliste: Abschnitte als graue Gruppenköpfe, DMs mit Status-Punkt. */
+html:root[data-theme="seequ"] .sidebar {
+  border-right: 2px solid var(--seequ-shadow);
+}
+html:root[data-theme="seequ"] .sidebar .section {
+  background: var(--seequ-face);
+  color: #000000;
+  font-weight: bold;
+}
+html:root[data-theme="seequ"] .sidebar .item[data-kind="direct"] .icon,
+html:root[data-theme="seequ"] .sidebar .item[data-kind="group"] .icon {
+  color: #9a9a9a;
+  opacity: 1;
+}
+/* Neue Nachricht: Punkt grün und blinkend, wie früher in der Taskleiste. */
+html:root[data-theme="seequ"] .sidebar .item.unread[data-kind="direct"] .icon,
+html:root[data-theme="seequ"] .sidebar .item.unread[data-kind="group"] .icon {
+  color: var(--online);
+  animation: seequ-blink 1s steps(1) infinite;
+}
+@keyframes seequ-blink {
+  50% {
+    color: #d42020;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html:root[data-theme="seequ"] .sidebar .item .icon {
+    animation: none;
+  }
+}

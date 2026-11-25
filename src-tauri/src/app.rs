@@ -104,11 +104,14 @@ fn size_main_window(handle: &AppHandle) {
 struct ChatEvent<'a> {
     account: &'a str,
     event: &'a BackendEvent,
+    /// Ton spielen (Entscheidung des Kerns, siehe `Alert`).
+    sound: bool,
 }
 
 async fn event_loop(handle: AppHandle, app: Arc<App>, mut rx: chatty_core::app::Events) {
     while let Some((account, mut event)) = rx.recv().await {
-        if let Some(n) = app.handle_event(&account, &mut event) {
+        let alert = app.handle_event(&account, &mut event);
+        if let Some(n) = alert.notification {
             let _ = handle
                 .notification()
                 .builder()
@@ -121,6 +124,7 @@ async fn event_loop(handle: AppHandle, app: Arc<App>, mut rx: chatty_core::app::
             ChatEvent {
                 account: &account,
                 event: &event,
+                sound: alert.sound,
             },
         );
     }
@@ -138,6 +142,11 @@ pub async fn app_info(state: State<'_, AppState>) -> Cmd<AppInfo> {
 #[tauri::command]
 pub fn set_settings(state: State<'_, AppState>, theme: String, notifications: bool) -> Cmd<()> {
     state.app.set_settings(theme, notifications)
+}
+
+#[tauri::command]
+pub fn set_sound(state: State<'_, AppState>, on: bool) -> Cmd<()> {
+    state.app.set_sound(on)
 }
 
 #[tauri::command]

@@ -269,6 +269,7 @@
           >
             <button
               class="item"
+              data-kind={s.kind}
               class:active={s.id === chat.space}
               class:unread={s.unread && !s.muted}
               class:muted={s.muted}

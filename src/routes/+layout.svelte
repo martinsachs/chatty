@@ -1,6 +1,7 @@
 <script lang="ts">
   import "../app.css";
   import "../retro.css";
+  import "../seequ.css";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
   import { applyZoom, zoomKey, zoomStorage } from "$lib/zoom.svelte";

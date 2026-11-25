@@ -14,7 +14,8 @@ const ts = readFileSync(`${root}src/lib/chat.svelte.ts`, "utf8");
 let code = compileModule(stripTypeScriptTypes(ts, { mode: "strip" }), { generate: "client", filename: "chat.svelte.js" }).js.code;
 code = code
   .replace(/import \{ listen \} from "@tauri-apps\/api\/event";/, "const listen = globalThis.__listen;")
-  .replace(/import \{[^}]*\} from "\.\/api";/, "const { api, emojiSrc } = globalThis.__api;");
+  .replace(/import \{[^}]*\} from "\.\/api";/, "const { api, emojiSrc } = globalThis.__api;")
+  .replace(/import \{ playNotificationSound \} from "\.\/sound";/, "const playNotificationSound = (theme) => globalThis.__sounds.push(theme);");
 writeFileSync(`${outDir}/chat.mjs`, code);
 globalThis.document = { hasFocus: () => true };
 const calls = [];
@@ -24,6 +25,7 @@ const msg = (space, n) => ({ id: `${space}-${n}`, space_id: space, created: n, i
 let delay = { A: 30, B: 5 };
 let server = { A: [msg("A", 1), msg("A", 2)], B: [msg("B", 1)] };
 globalThis.__listen = async () => () => {};
+globalThis.__sounds = [];
 globalThis.__api = {
   emojiSrc: () => "",
   api: {
@@ -93,6 +95,18 @@ assert.equal(chat.cursor, "B-2");
 chat.accounts = [{ id: "acc", online: true, label: "x", kind: "google" }];
 chat.trimToWindow(1);
 assert.equal(chat.messages.length, 3, "Google: nicht kürzen");
+
+// Ton: entscheidet der Kern (`sound`), Ton je Optik; nur das Hauptfenster spielt.
+const created = (sound) => ({ account: "acc", event: { type: "message_created", message: msg("A", 200) }, sound });
+chat.theme = "seequ";
+chat["onEvent"]?.call(chat, created(true));
+chat["onEvent"]?.call(chat, created(false));
+chat.popout = true;
+chat["onEvent"]?.call(chat, created(true));
+chat.popout = false;
+chat.theme = "mattermost";
+chat["onEvent"]?.call(chat, created(true));
+assert.deepEqual(globalThis.__sounds, ["seequ", "mattermost"], "Ton nur mit sound, nur Hauptfenster, Optik wird übergeben");
 
 // K5: Kontowechsel meldet alten Space inaktiv.
 calls.length = 0;

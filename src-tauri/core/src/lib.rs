@@ -9,4 +9,4 @@ pub mod model;
 pub mod secrets;
 pub mod store;
 
-pub use app::{AccountInfo, App, AppInfo, Notification};
+pub use app::{AccountInfo, Alert, App, AppInfo, Notification};

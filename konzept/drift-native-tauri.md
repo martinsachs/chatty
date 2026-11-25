@@ -20,6 +20,8 @@ offen, mit Grund).
 | Favorit/Stumm-Knöpfe beim Überfahren | gleich | gleich |
 | Retro-Optiken (mIRC, DOS): ungelesen mit „*“ vor dem Kanal und Farbe (mIRC rot, DOS gelb), weil Festbreitenschriften kaum fett wirken (Auftrag 2026-11-21) | – | gleich (beide) |
 | Status-Emoji, Erwähnungszähler, Fettdruck ungelesen, Stumm gedämpft | Status nur Unicode | gleich (eigene Server-Emojis als Status: Abweichung, nur Unicode) |
+| Optik „seequ“ (Messenger 2001): DMs mit Status-Punkt, ungelesen grün blinkend (Auftrag 2026-11-24) | – | Abweichung: native nur Farben, ohne Status-Punkt |
+| Ton bei DMs und Erwähnungen: Kern entscheidet (`Alert.sound`, Einstellung `sound`, sonst an für `SOUND_THEMES`), Ton je Optik in `sound.ts` (seequ „Uh-oh“, sonst Ping) | – | Abweichung: native ohne Ton und ohne Schalter (keine Audio-Abhängigkeit); `Alert.sound` liegt bereit |
 | Favoriten per Ziehen umsortieren bzw. in/aus Favoriten ziehen | fehlte | Abweichung: iced hat kein Drag&Drop; Favorit per Knopf |
 
 ## Kanal-Ansicht und Eingabe

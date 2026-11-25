@@ -1,6 +1,7 @@
 // Zentraler UI-Zustand. Ein Fenster = eine Instanz (Hauptfenster oder abgelöstes Chatfenster).
 import { listen } from "@tauri-apps/api/event";
 import { api, emojiSrc, type AccountInfo, type ChatEvent, type Message, type Space, type Theme } from "./api";
+import { playNotificationSound } from "./sound";
 
 export interface Toast {
   id: number;
@@ -18,6 +19,7 @@ export type Rhs =
 class Chat {
   theme = $state<Theme>("mattermost");
   notifications = $state(true);
+  sound = $state(false);
   googleConfigured = $state(false);
   googleClientId = $state("");
   accounts = $state<AccountInfo[]>([]);
@@ -66,6 +68,7 @@ class Chat {
     const info = await api.appInfo();
     this.theme = info.theme;
     this.notifications = info.notifications;
+    this.sound = info.sound;
     this.googleConfigured = info.google_configured;
     this.googleClientId = info.google_client_id;
     this.accounts = info.accounts;
@@ -76,6 +79,14 @@ class Chat {
     this.theme = theme;
     this.notifications = notifications;
     await this.guard(api.setSettings(theme, notifications));
+    // Ohne eigene Einstellung hängt der Ton an der Optik.
+    const info = await this.guard(api.appInfo());
+    if (info) this.sound = info.sound;
+  }
+
+  async saveSound(on: boolean) {
+    this.sound = on;
+    await this.guard(api.setSound(on));
   }
 
   /** Erst Cache zeigen, dann vom Server aktualisieren. */
@@ -341,7 +352,7 @@ class Chat {
     if (this.rhs?.kind === "thread") this.rhs.replies = this.rhs.replies.filter((m) => m.id !== id);
   }
 
-  private onEvent({ account, event }: ChatEvent) {
+  private onEvent({ account, event, sound }: ChatEvent) {
     const acc = this.accounts.find((a) => a.id === account);
     switch (event.type) {
       case "status":
@@ -375,6 +386,8 @@ class Chat {
           if (visible) this.markRead();
           else this.markUnread(account, m);
         }
+        // Nur das Hauptfenster spielt, sonst klingt es doppelt.
+        if (sound && !this.popout) playNotificationSound(this.theme);
         break;
       }
       case "message_deleted":

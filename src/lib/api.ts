@@ -19,6 +19,8 @@ export interface AccountInfo extends Account {
 export interface AppInfo {
   theme: Theme;
   notifications: boolean;
+  /** Ton bei Benachrichtigungen, nach Einstellung oder Vorgabe der Optik. */
+  sound: boolean;
   google_configured: boolean;
   google_client_id: string;
   accounts: AccountInfo[];
@@ -36,7 +38,7 @@ export interface PickedFile {
   name: string;
 }
 
-export type Theme = "mattermost" | "slack" | "ehex" | "mirc" | "dos";
+export type Theme = "mattermost" | "slack" | "ehex" | "mirc" | "dos" | "seequ";
 
 export interface Space {
   id: string;
@@ -99,12 +101,15 @@ export type BackendEvent =
 export interface ChatEvent {
   account: string;
   event: BackendEvent;
+  /** Ton spielen (DM oder Erwähnung, Space nicht sichtbar, Ton an); welcher, steht in sound.ts. */
+  sound: boolean;
 }
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
   setSettings: (theme: string, notifications: boolean) =>
     invoke<void>("set_settings", { theme, notifications }),
+  setSound: (on: boolean) => invoke<void>("set_sound", { on }),
   setGoogleClient: (clientId: string, clientSecret: string) =>
     invoke<void>("set_google_client", { clientId, clientSecret }),
   addGoogle: (accountId?: string) => invoke<Account>("add_google_account", { accountId }),
