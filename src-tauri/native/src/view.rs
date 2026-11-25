@@ -18,6 +18,9 @@ use crate::{
     COMPOSER, DM_MAX_AGE_MS, FormField, MESSAGES, Message, QUICK_EMOJI, Rhs, State, ToastKind,
 };
 
+/// Anleitung für den OAuth-Client (Tauri: Kurzfassung mit Direktlinks in `GoogleSetupHelp.svelte`).
+const GOOGLE_SETUP_GUIDE: &str = "https://github.com/martinsachs/chatty/blob/main/konzept/google-setup.md";
+
 pub fn view(s: &State) -> Element<'_, Message> {
     let main: Element<'_, Message> = if s.settings.is_some() {
         settings(s)
@@ -1092,7 +1095,16 @@ fn settings(s: &State) -> Element<'_, Message> {
         .push(button(text("Anmelden")).on_press_maybe(can_add.then_some(Message::AddMattermost)));
 
     // Google
-    col = col.push(text("Google Chat").font(look.font(true)));
+    col = col.push(
+        row![
+            text("Google Chat").font(look.font(true)),
+            button(text("Anleitung OAuth-Client"))
+                .style(button::text)
+                .on_press(Message::Link(GOOGLE_SETUP_GUIDE.into())),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    );
     col = col.push(field(
         "OAuth-Client-ID",
         &f.client_id,

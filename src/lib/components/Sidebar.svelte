@@ -5,7 +5,9 @@
   import PresenceIcon from "./PresenceIcon.svelte";
   import StatusMenu from "./StatusMenu.svelte";
 
-  let { onSettings }: { onSettings: () => void } = $props();
+  import type { SettingsTab } from "./Settings.svelte";
+
+  let { onSettings }: { onSettings: (tab?: SettingsTab) => void } = $props();
 
   type Section = "fav" | "channel" | "dm";
   const sections: { id: Section; title: string }[] = [
@@ -228,7 +230,15 @@
       {#if unreadTotal[a.id]}<span class="badge">{unreadTotal[a.id]}</span>{/if}
     </button>
   {/each}
-  <button class="team add" title="Konto hinzufügen / Einstellungen" onclick={onSettings}>+</button>
+  <button class="team add" title="Konto hinzufügen" onclick={() => onSettings("add-mm")}>+</button>
+  <button class="team settings" title="Einstellungen (Darstellung)" aria-label="Einstellungen" onclick={() => onSettings("settings")}>
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <path
+        d="M19.8 10.3 L22.4 10.6 L22.4 13.4 L19.8 13.7 L18.7 16.3 L20.4 18.3 L18.3 20.4 L16.3 18.7 L13.7 19.8 L13.4 22.4 L10.6 22.4 L10.3 19.8 L7.7 18.7 L5.7 20.4 L3.6 18.3 L5.3 16.3 L4.2 13.7 L1.6 13.4 L1.6 10.6 L4.2 10.3 L5.3 7.7 L3.6 5.7 L5.7 3.6 L7.7 5.3 L10.3 4.2 L10.6 1.6 L13.4 1.6 L13.7 4.2 L16.3 5.3 L18.3 3.6 L20.4 5.7 L18.7 7.7Z"
+      />
+      <circle cx="12" cy="12" r="3.5" />
+    </svg>
+  </button>
 </nav>
 
 <aside class="sidebar" style:width="{width}px">
@@ -361,6 +371,18 @@
     background: transparent;
     border: 1px dashed rgba(255, 255, 255, 0.4);
     font-size: 20px;
+  }
+  /* Einstellungen unten in der Leiste. */
+  .team.settings {
+    margin-top: auto;
+    background: transparent;
+    line-height: 0;
+  }
+  .team.settings svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linejoin: round;
   }
   .offline {
     position: absolute;

@@ -6,24 +6,28 @@ OAuth-Client vom Typ „Desktop-App“. Die Schritte erledigt ein Workspace- bzw
 
 Nicht nötig: Pub/Sub, Service-Konto, domänenweite Delegierung. chatty fragt per Polling ab.
 
+In chatty öffnet **ⓘ** neben „Google Chat“ (Konto hinzufügen) eine Kurzfassung mit Direktlinks.
+
 ## 1. Projekt anlegen
 
-1. <https://console.cloud.google.com/> → Projektauswahl → **Neues Projekt**.
+1. <https://console.cloud.google.com/projectcreate> (bzw. Projektauswahl → **Neues Projekt**).
 2. Name frei wählen (z. B. `chatty`), Organisation des Workspace auswählen.
 
 ## 2. APIs aktivieren
 
 **APIs & Dienste → Bibliothek**, nacheinander aktivieren:
 
-- **Google Chat API**
-- **People API** (eigener Name, Namen anderer Nutzer in Direktnachrichten)
+- **Google Chat API**: <https://console.cloud.google.com/apis/library/chat.googleapis.com>
+- **People API** (eigener Name, Namen anderer Nutzer in Direktnachrichten):
+  <https://console.cloud.google.com/apis/library/people.googleapis.com>
 
 ## 3. Chat-App konfigurieren
 
 Auch bei reiner Nutzer-Authentifizierung verlangt die Chat API eine konfigurierte Chat-App,
 sonst antworten alle Aufrufe mit Fehler 404/403.
 
-**APIs & Dienste → Google Chat API → Konfiguration**:
+**APIs & Dienste → Google Chat API → Konfiguration**
+(<https://console.cloud.google.com/apis/api/chat.googleapis.com/hangouts-chat>):
 
 - **App-Name**: z. B. `chatty`
 - **Avatar-URL**: beliebiges öffentlich erreichbares PNG/JPG (Pflichtfeld)
@@ -35,7 +39,8 @@ sonst antworten alle Aufrufe mit Fehler 404/403.
 ## 4. OAuth-Zustimmungsbildschirm
 
 **APIs & Dienste → OAuth-Zustimmungsbildschirm** (neuere Konsole: **Google Auth Platform → Branding /
-Zielgruppe / Datenzugriff**):
+Zielgruppe / Datenzugriff**: <https://console.cloud.google.com/auth/branding>,
+<https://console.cloud.google.com/auth/audience>, <https://console.cloud.google.com/auth/scopes>):
 
 - **Nutzertyp: Intern** – nur Konten der eigenen Workspace-Organisation, keine Google-Prüfung nötig.
 - App-Name, Support-E-Mail, Kontakt-E-Mail des Entwicklers ausfüllen.
@@ -58,7 +63,8 @@ eintragen.
 
 ## 5. OAuth-Client anlegen
 
-**APIs & Dienste → Anmeldedaten → Anmeldedaten erstellen → OAuth-Client-ID**:
+**APIs & Dienste → Anmeldedaten → Anmeldedaten erstellen → OAuth-Client-ID**
+(<https://console.cloud.google.com/auth/clients/create>):
 
 - **Anwendungstyp: Desktop-App**
 - Name: z. B. `chatty desktop`
