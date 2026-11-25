@@ -125,6 +125,8 @@ export const api = {
     invoke<Message[]>("list_thread", { account, space, thread }),
   /** Öffnen-Dialog im Backend; liefert IDs statt Pfaden. */
   pickFiles: () => invoke<PickedFile[]>("pick_files"),
+  /** Bild aus der Zwischenablage als Anhang vormerken (Rohdaten als Body). */
+  pasteImage: (data: Uint8Array) => invoke<PickedFile>("paste_image", data),
   send: (account: string, space: string, text: string, thread: string | null, files: number[]) =>
     invoke<Message>("send_message", { account, space, text, thread, files }),
   edit: (account: string, space: string, id: string, text: string) =>
@@ -150,6 +152,11 @@ export function avatarSrc(account: string, userId: string): string {
 /** URL eines eigenen Server-Emojis über dasselbe Schema. */
 export function emojiSrc(account: string, name: string): string {
   return `${convertFileSrc(account, "avatar")}/emoji/${encodeURIComponent(name)}`;
+}
+
+/** Vorschau einer zum Senden gewählten Datei (nur Bilder, sonst 404). */
+export function pickedSrc(id: number): string {
+  return `${convertFileSrc("picked", "avatar")}/${id}`;
 }
 
 /** Bildvorschau eines Anhangs über dasselbe Schema (Mattermost verkleinert, Google Original bis 10 MiB). */

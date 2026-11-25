@@ -147,6 +147,12 @@ pub struct State {
     pub editing: Option<Msg>,
     /// Gewählte Anhänge für die nächste Nachricht.
     pub files: Vec<PathBuf>,
+    /// Vorschaubilder gewählter Bilddateien.
+    pub thumbs: HashMap<PathBuf, image::Handle>,
+    /// Formatierte Vorschau des Eingabetexts (an, wenn `Some`).
+    pub preview: Option<Vec<markdown::Item>>,
+    /// Nachricht im Markier-Modus: Text in einem schreibgeschützten Editor zum Auswählen und Kopieren.
+    pub selecting: Option<(String, text_editor::Content)>,
     pub sending: bool,
     pub show_down: bool,
     pub rhs: Option<Rhs>,
@@ -201,6 +207,14 @@ pub enum Message {
     Escape,
     PickFiles,
     Picked(Vec<PathBuf>),
+    /// Strg+V im Eingabefeld: Bild aus der Zwischenablage holen (Text fügt der Editor selbst ein).
+    PasteImage,
+    Pasted(Option<Vec<u8>>),
+    Preview,
+    /// Markier-Modus für eine Nachricht an/aus.
+    Select(Option<Msg>),
+    SelectAction(text_editor::Action),
+    Copy(String),
     RemoveFile(usize),
     Save(Attachment),
     Saved(String, Result<bool, String>),
@@ -301,6 +315,9 @@ fn boot() -> (State, Task<Message>) {
         thread_composer: text_editor::Content::new(),
         editing: None,
         files: Vec::new(),
+        thumbs: HashMap::new(),
+        preview: None,
+        selecting: None,
         sending: false,
         show_down: false,
         rhs: None,
@@ -355,6 +372,13 @@ impl State {
         if line != self.topic.0 {
             let items = markdown::parse(&text::hard_breaks(line)).collect();
             self.topic = (line.to_string(), items);
+        }
+    }
+
+    /// Formatierte Vorschau dem Eingabetext nachführen, wenn sie offen ist.
+    fn update_preview(&mut self) {
+        if let Some(items) = &mut self.preview {
+            *items = markdown::parse(&text::hard_breaks(self.composer.text().trim())).collect();
         }
     }
 
@@ -697,6 +721,20 @@ pub fn preview_path(account: &str, a: &Attachment) -> String {
 
 /// Bilder nur bis `max`×`max` dekodieren: eine kleine Datei mit riesigen Abmessungen
 /// (Dekompressionsbombe) belegte sonst Hunderte MiB.
+/// Bild aus der Zwischenablage als PNG; `None` ohne Bild oder wenn sie auch Text enthält (der gewinnt,
+/// wie in Tauri). Blockiert, daher in `spawn_blocking`.
+fn clipboard_png() -> Option<Vec<u8>> {
+    let mut cb = arboard::Clipboard::new().ok()?;
+    if cb.get_text().is_ok_and(|t| !t.trim().is_empty()) {
+        return None;
+    }
+    let i = cb.get_image().ok()?;
+    let rgba = img::RgbaImage::from_raw(i.width as u32, i.height as u32, i.bytes.into_owned())?;
+    let mut out = std::io::Cursor::new(Vec::new());
+    rgba.write_to(&mut out, img::ImageFormat::Png).ok()?;
+    Some(out.into_inner())
+}
+
 fn small_image(data: &[u8], max: u32) -> bool {
     img::ImageReader::new(std::io::Cursor::new(data))
         .with_guessed_format()
@@ -874,6 +912,16 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
         }
         Message::Compose(action) => {
             s.composer.perform(action);
+            s.update_preview();
+            Task::none()
+        }
+        Message::Preview => {
+            s.preview = if s.preview.is_some() {
+                None
+            } else {
+                Some(Vec::new())
+            };
+            s.update_preview();
             Task::none()
         }
         Message::Send => {
@@ -913,6 +961,8 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
                 Ok(m) => {
                     s.composer = text_editor::Content::new();
                     s.files.clear();
+                    s.thumbs.clear();
+                    s.update_preview();
                     Task::batch([s.upsert(m, true), to_bottom()])
                 }
                 Err(e) => s.error(e),
@@ -941,7 +991,8 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
             }
         }
         Message::Escape => {
-            if s.editing.take().is_some() {
+            if s.selecting.take().is_some() {
+            } else if s.editing.take().is_some() {
                 s.composer = text_editor::Content::new();
             } else if s.picker.is_some() || s.confirm_delete.is_some() {
                 s.picker = None;
@@ -991,15 +1042,59 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
             Message::Picked,
         ),
         Message::Picked(paths) => {
+            for p in &paths {
+                if let Some(a) = chatty_core::app::local_preview(p)
+                    && small_image(&a.data, 4096)
+                {
+                    s.thumbs
+                        .insert(p.clone(), image::Handle::from_bytes(a.data));
+                }
+            }
             s.files.extend(paths);
             operation::focus(COMPOSER)
         }
         Message::RemoveFile(i) => {
             if i < s.files.len() {
-                s.files.remove(i);
+                let p = s.files.remove(i);
+                s.thumbs.remove(&p);
             }
             Task::none()
         }
+        Message::PasteImage => Task::perform(
+            async {
+                tokio::task::spawn_blocking(clipboard_png)
+                    .await
+                    .ok()
+                    .flatten()
+            },
+            Message::Pasted,
+        ),
+        Message::Pasted(None) => Task::none(),
+        Message::Pasted(Some(png)) => match s.app.paste_image(&png) {
+            Ok(path) => update(s, Message::Picked(vec![path])),
+            Err(e) => s.error(e.to_string()),
+        },
+        Message::Select(m) => {
+            s.selecting = m.map(|m| {
+                let mut c = text_editor::Content::with_text(&m.text);
+                c.perform(text_editor::Action::SelectAll);
+                (m.id, c)
+            });
+            Task::none()
+        }
+        Message::SelectAction(action) => {
+            if let Some((_, c)) = &mut s.selecting
+                && !action.is_edit()
+            {
+                c.perform(action);
+            }
+            Task::none()
+        }
+        Message::Copy(text) => Task::batch([
+            iced::clipboard::write(text),
+            update(s, Message::Select(None)),
+            s.toast("Text kopiert", ToastKind::Info, None),
+        ]),
         Message::Save(att) => {
             let Some(account) = s.account.clone() else {
                 return Task::none();

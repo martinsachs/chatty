@@ -406,14 +406,24 @@ fn composer<'a>(s: &'a State, space: &str) -> Element<'a, Message> {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            chips = chips.push(
-                row![
-                    text(name).size(13),
-                    small(look, "×").on_press(Message::RemoveFile(i))
-                ]
-                .spacing(4)
-                .align_y(Alignment::Center),
-            );
+            let chip = row![
+                text(name).size(13),
+                small(look, "×").on_press(Message::RemoveFile(i))
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center);
+            chips = chips.push(match s.thumbs.get(f) {
+                Some(h) => Element::from(
+                    column![
+                        container(image(h.clone()).content_fit(iced::ContentFit::ScaleDown))
+                            .max_width(160)
+                            .max_height(100),
+                        chip
+                    ]
+                    .spacing(2),
+                ),
+                None => chip.into(),
+            });
         }
         col = col.push(chips);
     }
@@ -425,6 +435,25 @@ fn composer<'a>(s: &'a State, space: &str) -> Element<'a, Message> {
         );
     }
     let empty = s.composer.text().trim().is_empty();
+    if let Some(items) = s.preview.as_ref().filter(|i| !i.is_empty()) {
+        col = col.push(
+            container(scrollable(markdown::view_with(
+                items,
+                look.markdown(),
+                &EmojiViewer,
+            )))
+            .max_height(200)
+            .padding([4, 10])
+            .style(move |_| container::Style {
+                border: iced::Border {
+                    color: look.border,
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..container::Style::default()
+            }),
+        );
+    }
     let mut editor = text_editor(&s.composer)
         .id(COMPOSER)
         .placeholder(format!("Nachricht an {space}"))
@@ -432,9 +461,19 @@ fn composer<'a>(s: &'a State, space: &str) -> Element<'a, Message> {
         .padding(10)
         .max_height(240.0);
     if s.online() {
-        editor = editor
-            .on_action(Message::Compose)
-            .key_binding(move |kp| chat_keys(kp, empty, Message::Send, Some(Message::EditLast)));
+        editor = editor.on_action(Message::Compose).key_binding(move |kp| {
+            // Strg+V: Text wie gewohnt, danach Bild aus der Zwischenablage als Anhang prüfen.
+            if kp.modifiers.command()
+                && !kp.modifiers.alt()
+                && kp.key.to_latin(kp.physical_key) == Some('v')
+            {
+                return Some(Binding::Sequence(vec![
+                    Binding::Paste,
+                    Binding::Custom(Message::PasteImage),
+                ]));
+            }
+            chat_keys(kp, empty, Message::Send, Some(Message::EditLast))
+        });
     }
     let prompt = text(look.prompt).font(look.font(false));
     col = col.push(row![prompt, editor].spacing(6).align_y(Alignment::Center));
@@ -442,7 +481,15 @@ fn composer<'a>(s: &'a State, space: &str) -> Element<'a, Message> {
     col = col.push(
         row![
             small(look, "📎").on_press(Message::PickFiles),
-            text("Enter senden · Shift+Enter neue Zeile · ↑ letzte bearbeiten")
+            button(text("👁").size(13))
+                .on_press(Message::Preview)
+                .padding([2, 6])
+                .style(move |_, _| button::Style {
+                    background: s.preview.is_some().then(|| look.code_bg.into()),
+                    text_color: look.text,
+                    ..button::Style::default()
+                }),
+            text("Enter senden · Shift+Enter neue Zeile · ↑ letzte bearbeiten · Strg+V Bild · 👁 Vorschau")
                 .size(11)
                 .color(look.muted)
                 .width(Length::Fill),
@@ -516,6 +563,31 @@ fn message<'a>(s: &'a State, m: &'a Msg, in_thread: bool, compact: bool) -> Elem
     let look = &s.look;
     let time = time(m.created);
     let body: Element<'a, Message> = match s.md.get(&m.id) {
+        // Markier-Modus: schreibgeschützter Editor, Maus markiert, Strg+C kopiert.
+        _ if s.selecting.as_ref().is_some_and(|(id, _)| id == &m.id) => {
+            let (_, content) = s.selecting.as_ref().expect("geprüft");
+            let selected = content.selection().unwrap_or_else(|| m.text.clone());
+            column![
+                text_editor(content).font(look.font(false)).on_action(|a| {
+                    if a.is_edit() {
+                        Message::Ignore
+                    } else {
+                        Message::SelectAction(a)
+                    }
+                }),
+                row![
+                    text("Markieren mit Maus oder Shift+Pfeil · Strg+C kopiert")
+                        .size(11)
+                        .color(look.muted),
+                    small(look, "Kopieren").on_press(Message::Copy(selected)),
+                    small(look, "Fertig").on_press(Message::Select(None)),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            ]
+            .spacing(2)
+            .into()
+        }
         // Nur Emojis: groß wie bei Mattermost/Slack.
         _ if crate::text::emoji_only(&m.text) => text(m.text.trim()).size(34).into(),
         Some(items) => markdown::view_with(items, look.markdown(), &EmojiViewer),
@@ -695,6 +767,13 @@ fn message<'a>(s: &'a State, m: &'a Msg, in_thread: bool, compact: bool) -> Elem
             }))
         ]
         .spacing(2);
+    actions = actions.push(small(look, "⎘").on_press(Message::Select(
+        if s.selecting.as_ref().is_some_and(|(id, _)| id == &m.id) {
+            None
+        } else {
+            Some(m.clone())
+        },
+    )));
     if !in_thread && m.thread_id.is_some() {
         actions = actions.push(small(look, "↩").on_press(Message::OpenThread(m.clone())));
     }

@@ -78,6 +78,17 @@ Cache). Native: Abmessungen vor dem Dekodieren geprüft (max. 4096×4096). Integ
 ID mit `../` abgelehnt. Ein Absender erfährt wie bei jedem Chat-Client nichts über das Laden: Bilder kommen vom
 eigenen Server, nicht von fremden Adressen.
 
+## Nachtrag Einfügen und Kopieren (2026-11-25)
+
+Eingefügte Bilder landen als Datei im Datenverzeichnis (`paste/`, 0700, Datei 0600) und gehen den Weg gewählter
+Anhänge (ADR 06). Typ nach den ersten Bytes (png/jpeg/gif/webp, kein SVG), höchstens 32 MiB, Name vom Programm
+(`bild-<Zeit>.<endung>`), kein Pfad aus der Oberfläche. Nach dem Senden gelöscht, Reste beim Start nach 24 h.
+Tauri: Rohdaten per IPC-Body an `paste_image`, das Frontend erhält nur ID und Namen; Vorschau über
+`avatar://localhost/picked/<id>` nur für vorgemerkte IDs und Bildendungen, bis 10 MiB, mit derselben
+Typ-Whitelist. Native liest die Zwischenablage nur bei Strg+V im Eingabefeld. Die Textvorschau nutzt
+`formatText` (Tauri, Fuzz-geprüft) bzw. den Markdown-Viewer (native, ohne Raw-HTML). Kopieren schreibt nur
+Nachrichtentext in die Zwischenablage. Neue Abhängigkeit `arboard` 3.7.0 (native); `cargo audit` ohne neue Funde.
+
 ## Offen (bewusst nicht umgesetzt)
 
 - **Ereigniskanal unbegrenzt:** Ein Server kann Ereignisse fluten. WebSocket-Limit gesetzt, begrenzter Kanal

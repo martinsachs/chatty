@@ -292,6 +292,19 @@ pub async fn pick_files(app: AppHandle, state: State<'_, AppState>) -> Cmd<Vec<P
     Ok(state.picked.add(paths))
 }
 
+/// Bild aus der Zwischenablage (Rohdaten im Request-Body) als Anhang vormerken.
+#[tauri::command]
+pub fn paste_image(
+    state: State<'_, AppState>,
+    request: tauri::ipc::Request<'_>,
+) -> Cmd<PickedFile> {
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err(Error::other("Bilddaten fehlen"));
+    };
+    let path = state.app.paste_image(data)?;
+    Ok(state.picked.add(vec![path]).remove(0))
+}
+
 /// Speichern-Dialog im Backend, schreibt den Anhang selbst. `false` = abgebrochen.
 #[tauri::command]
 pub async fn save_attachment(
@@ -426,7 +439,16 @@ pub fn avatar_protocol(
         .into_owned();
     tauri::async_runtime::spawn(async move {
         let avatar = match app.try_state::<AppState>() {
-            Some(state) => state.app.image(&path).await,
+            // Vorschau einer zum Senden gewählten Datei (`picked/<id>`), nur Bildtypen.
+            Some(state) => match path.strip_prefix("picked/").map(str::parse::<u64>) {
+                Some(Ok(id)) => state
+                    .picked
+                    .paths(&[id])
+                    .ok()
+                    .and_then(|p| chatty_core::app::local_preview(&p[0])),
+                Some(Err(_)) => None,
+                None => state.app.image(&path).await,
+            },
             None => None,
         };
         let response = match avatar {

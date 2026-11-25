@@ -1,5 +1,14 @@
 # Änderungen
 
+## Unveröffentlicht
+
+**Neu** (beide Varianten)
+- Text kopieren: ⎘ an jeder Nachricht. Native Variante: Nachricht zum Markieren öffnen, Strg+C kopiert die
+  Auswahl; Tauri markiert direkt im Verlauf.
+- Bilder aus der Zwischenablage mit Strg+V als Anhang einfügen, Vorschaubild über dem Eingabefeld (auch für
+  per 📎 gewählte Bilder).
+- 👁 zeigt den getippten Text formatiert vor dem Senden.
+
 ## 0.2.4 – 2026-11-24
 
 **Neu** (beide Varianten)

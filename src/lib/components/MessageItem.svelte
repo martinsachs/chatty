@@ -44,6 +44,15 @@
     } else if (e.key === "Escape") editing = false;
   }
 
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(m.text);
+      chat.toast("Text kopiert");
+    } catch (e) {
+      chat.toast(String(e), "error");
+    }
+  }
+
   async function del() {
     if (confirm("Nachricht wirklich löschen?")) await chat.remove(m);
   }
@@ -129,6 +138,7 @@
   {#if !editing}
     <div class="actions">
       <button class="icon-btn" title="Reaktion" onclick={() => (picker = !picker)}>☺</button>
+      <button class="icon-btn" title="Text kopieren (Teile: markieren, Strg+C)" onclick={copy}>⎘</button>
       {#if !inThread && m.thread_id}
         <button class="icon-btn" title="Antworten" onclick={() => chat.openThread(m)}>↩</button>
       {/if}

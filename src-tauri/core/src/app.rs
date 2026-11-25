@@ -11,7 +11,7 @@ use tokio::sync::{RwLock, mpsc, watch};
 
 use crate::backend::google::GoogleBackend;
 use crate::backend::mattermost::MattermostBackend;
-use crate::backend::{Avatar, ChatBackend, EventSender};
+use crate::backend::{Avatar, ChatBackend, EventSender, MAX_PREVIEW};
 use crate::config::{self, Config, GoogleConfig};
 use crate::error::{Error, Result};
 use crate::model::{
@@ -36,6 +36,8 @@ type AvatarCell = Arc<tokio::sync::OnceCell<Option<Avatar>>>;
 
 pub struct App {
     cfg_dir: PathBuf,
+    /// Aus der Zwischenablage eingefügte Bilder bis zum Senden (ADR 06: Anhänge als Pfade).
+    paste_dir: PathBuf,
     config: Mutex<Config>,
     accounts: Mutex<Vec<Account>>,
     running: RwLock<HashMap<String, Running>>,
@@ -101,21 +103,74 @@ fn mime_for(name: &str) -> &'static str {
     }
 }
 
+/// Obergrenze für ein eingefügtes Bild (Bildschirmfotos großer Monitore als PNG).
+pub const MAX_PASTE: usize = 32 << 20;
+
+/// Bildtyp an den ersten Bytes erkennen (nicht am Namen), nur png/jpeg/gif/webp.
+fn image_ext(data: &[u8]) -> Option<&'static str> {
+    if data.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("png")
+    } else if data.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("jpg")
+    } else if data.starts_with(b"GIF8") {
+        Some("gif")
+    } else if data.len() > 12 && &data[..4] == b"RIFF" && &data[8..12] == b"WEBP" {
+        Some("webp")
+    } else {
+        None
+    }
+}
+
+/// Vorschau einer lokalen Datei für die Eingabe: nur Bildtypen, höchstens [`MAX_PREVIEW`].
+pub fn local_preview(path: &Path) -> Option<Avatar> {
+    let mime = mime_for(&file_name(path));
+    if !mime.starts_with("image/") || std::fs::metadata(path).ok()?.len() > MAX_PREVIEW as u64 {
+        return None;
+    }
+    let data = std::fs::read(path).ok()?;
+    Some(Avatar {
+        data,
+        mime: mime.into(),
+    })
+}
+
+/// Eingefügte Bilder älter als ein Tag entfernen (nie gesendet, App beendet). Jüngere können zu einem
+/// zweiten laufenden chatty gehören.
+fn clean_pasted(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let old = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age.as_secs() > 86_400);
+        if old {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 impl App {
     /// Lädt Konfiguration, Konten und Cache aus den Standardverzeichnissen. Die Ereignisse aller Konten
     /// kommen über den zurückgegebenen Empfänger; jedes Ereignis zuerst an [`App::handle_event`] geben.
     pub fn open() -> Result<(Arc<App>, Events)> {
         let cfg_dir = config::config_dir()?;
-        let store = Store::open(&config::data_dir()?.join("cache.sqlite"))?;
-        Self::with(cfg_dir, store)
+        let data = config::data_dir()?;
+        let store = Store::open(&data.join("cache.sqlite"))?;
+        Self::with(cfg_dir, data.join("paste"), store)
     }
 
-    fn with(cfg_dir: PathBuf, store: Store) -> Result<(Arc<App>, Events)> {
+    fn with(cfg_dir: PathBuf, paste_dir: PathBuf, store: Store) -> Result<(Arc<App>, Events)> {
+        clean_pasted(&paste_dir);
         let config = config::load_config(&cfg_dir)?;
         let accounts = config::load_accounts(&cfg_dir)?;
         let (tx, rx) = mpsc::unbounded_channel();
         let app = App {
             cfg_dir,
+            paste_dir,
             config: Mutex::new(config),
             accounts: Mutex::new(accounts),
             running: RwLock::new(HashMap::new()),
@@ -523,7 +578,31 @@ impl App {
             .await?;
         self.store()
             .put_messages(account, std::slice::from_ref(&msg))?;
+        for path in files.iter().filter(|p| p.starts_with(&self.paste_dir)) {
+            let _ = std::fs::remove_file(path);
+        }
         Ok(msg)
+    }
+
+    /// Bild aus der Zwischenablage als Datei ablegen, damit es wie ein gewählter Anhang gesendet wird.
+    /// Typ nach Inhalt, Name `bild-<Zeit>.<endung>`.
+    pub fn paste_image(&self, data: &[u8]) -> Result<PathBuf> {
+        if data.len() > MAX_PASTE {
+            return Err(Error::other("Bild zu groß (max. 32 MiB)"));
+        }
+        let ext =
+            image_ext(data).ok_or_else(|| Error::other("Kein Bild (png, jpeg, gif, webp)"))?;
+        config::private_dir(&self.paste_dir)?;
+        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+        let mut path = self.paste_dir.join(format!("bild-{stamp}.{ext}"));
+        for n in 2.. {
+            if !path.exists() {
+                break;
+            }
+            path = self.paste_dir.join(format!("bild-{stamp}-{n}.{ext}"));
+        }
+        config::write_private(&path, data)?;
+        Ok(path)
     }
 
     /// Anhang laden und nach `path` schreiben.
@@ -653,7 +732,8 @@ mod tests {
     fn app() -> (tempfile::TempDir, Arc<App>) {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(&dir.path().join("c.sqlite")).unwrap();
-        let (app, _rx) = App::with(dir.path().to_path_buf(), store).unwrap();
+        let (app, _rx) =
+            App::with(dir.path().to_path_buf(), dir.path().join("paste"), store).unwrap();
         (dir, app)
     }
 
@@ -677,6 +757,26 @@ mod tests {
             reactions: vec![],
             attachments: vec![],
         }
+    }
+
+    #[test]
+    fn pastes_images_only() {
+        let (d, app) = app();
+        let png = b"\x89PNG\r\n\x1a\nrest";
+        let a = app.paste_image(png).unwrap();
+        let b = app.paste_image(png).unwrap();
+        assert_ne!(a, b, "gleiche Sekunde, eigener Name");
+        assert!(a.starts_with(d.path().join("paste")));
+        assert_eq!(a.extension().unwrap(), "png");
+        assert_eq!(std::fs::read(&a).unwrap(), png);
+        assert_eq!(local_preview(&a).unwrap().mime, "image/png");
+        assert!(
+            app.paste_image(b"<svg onload=x>").is_err(),
+            "kein Rasterbild"
+        );
+        let txt = d.path().join("a.txt");
+        std::fs::write(&txt, "x").unwrap();
+        assert!(local_preview(&txt).is_none(), "nur Bilder");
     }
 
     #[tokio::test]

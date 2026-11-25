@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { api, type PickedFile } from "$lib/api";
+  import { api, pickedSrc, type PickedFile } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
+  import { formatText } from "$lib/format";
 
   let {
     placeholder,
@@ -11,7 +12,26 @@
   let text = $state("");
   let files = $state<PickedFile[]>([]);
   let sending = $state(false);
+  let preview = $state(false);
+  // Dateien ohne Vorschaubild (kein Bild, zu groß): nur Name zeigen.
+  let noThumb = $state<Record<number, boolean>>({});
   let area: HTMLTextAreaElement;
+  const emojiUrl = (n: string) => chat.emojiUrl(chat.account, n);
+  const isImage = (name: string) => /\.(png|jpe?g|gif|webp)$/i.test(name);
+
+  // Bild aus der Zwischenablage (Bildschirmfoto) als Anhang. Enthält sie auch Text (z. B. Tabellenzellen),
+  // gewinnt der Text.
+  async function paste(e: ClipboardEvent) {
+    const data = e.clipboardData;
+    if (!data || data.types.includes("text/plain")) return;
+    const images = [...data.files].filter((f) => f.type.startsWith("image/"));
+    if (!images.length) return;
+    e.preventDefault();
+    for (const f of images) {
+      const picked = await chat.guard(api.pasteImage(new Uint8Array(await f.arrayBuffer())));
+      if (picked) files = [...files, picked];
+    }
+  }
 
   async function pick() {
     const picked = await chat.guard(api.pickFiles());
@@ -55,11 +75,17 @@
     <div class="chips">
       {#each files as f, i (f.id)}
         <span class="chip">
+          {#if isImage(f.name) && !noThumb[f.id]}
+            <img src={pickedSrc(f.id)} alt="" onerror={() => (noThumb[f.id] = true)} />
+          {/if}
           {f.name}
           <button class="icon-btn" title="Entfernen" onclick={() => (files = files.filter((_, j) => j !== i))}>×</button>
         </span>
       {/each}
     </div>
+  {/if}
+  {#if preview && text.trim()}
+    <div class="preview">{@html formatText(text, emojiUrl)}</div>
   {/if}
   <div class="row">
     <textarea
@@ -69,11 +95,15 @@
       rows="1"
       onkeydown={key}
       oninput={grow}
+      onpaste={paste}
       disabled={!chat.currentAccount?.online}
     ></textarea>
   </div>
   <div class="tools">
-    <button class="icon-btn" title="Datei anhängen" onclick={pick}>📎</button>
+    <button class="icon-btn" title="Datei anhängen (oder Bild mit Strg+V einfügen)" onclick={pick}>📎</button>
+    <button class="icon-btn" class:on={preview} title="Vorschau der Formatierung" onclick={() => (preview = !preview)}
+      >👁</button
+    >
     <span class="hint">Enter senden · Shift+Enter neue Zeile{onEditLast ? " · ↑ letzte bearbeiten" : ""}</span>
     <button class="btn send" onclick={submit} disabled={sending || (!text.trim() && !files.length)}>Senden</button>
   </div>
@@ -118,6 +148,24 @@
     flex-wrap: wrap;
     gap: 6px;
     padding: 8px 8px 0;
+  }
+  .chip img {
+    display: block;
+    max-width: 160px;
+    max-height: 100px;
+    margin-bottom: 2px;
+    border-radius: var(--radius);
+  }
+  .preview {
+    padding: 8px 12px;
+    border-bottom: 1px dashed var(--border);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .on {
+    background: var(--hover);
   }
   .chip {
     background: var(--hover);

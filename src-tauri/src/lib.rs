@@ -43,6 +43,7 @@ pub fn run() {
             app::delete_message,
             app::react,
             app::pick_files,
+            app::paste_image,
             app::save_attachment,
             app::search,
             app::mark_read,

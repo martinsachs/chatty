@@ -8,7 +8,7 @@ license = "Apache-2.0"
 [dependencies]
 chatty-core = { path = "../core" }
 # Software-Renderer (tiny-skia) statt wgpu: kein GPU-Treiber im Prozess, weniger Speicher.
-img = { package = "image", version = "0.25.10", default-features = false }
+img = { package = "image", version = "0.25.10", default-features = false, features = ["png"] }
 iced = { version = "0.14", default-features = false, features = ["tiny-skia", "x11", "wayland", "tokio", "thread-pool", "markdown", "image"] }
 tokio = { version = "1.54.1", features = ["sync", "time"] }
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
@@ -23,6 +23,7 @@ serde_json = "1"
 base64 = "0.23.1"
 minisign-verify = "0.3"
 self-replace = "1.5"
+arboard = { version = "3.7.0", default-features = false, features = ["image-data", "wayland-data-control"] }
 
 # Installer: `cargo packager --release -p chatty-native` (deb, AppImage, NSIS, dmg je nach System).
 [package.metadata.packager]
