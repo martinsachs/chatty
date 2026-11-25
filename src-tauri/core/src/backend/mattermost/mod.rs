@@ -23,12 +23,13 @@ use tokio::sync::watch;
 use crate::backend::{Avatar, ChatBackend, EventSender};
 use crate::error::{Error, Result};
 use crate::model::{
-    Account, Attachment, BackendKind, Message, Page, Space, SpaceKind, UploadFile, User,
-    count_replies,
+    Account, Attachment, BackendEvent, BackendKind, Message, Page, Presence, Space, SpaceKind,
+    UploadFile, User, count_replies,
 };
 use crate::secrets;
 use api::{
-    ApiChannel, ApiMember, ApiPost, ApiTeam, ApiUser, Me, PostList, Preference, UploadResponse,
+    ApiChannel, ApiMember, ApiPost, ApiStatus, ApiTeam, ApiUser, Me, PostList, Preference,
+    UploadResponse,
 };
 
 const PAGE_SIZE: usize = 50;
@@ -49,6 +50,8 @@ pub struct MattermostBackend {
     teams: Mutex<Vec<ApiTeam>>,
     /// DM-Partner → DM-Kanal (für Status-Änderungen per WebSocket).
     dm_by_user: Mutex<HashMap<String, String>>,
+    /// Nutzer-ID → Mattermost-Status (`online`, `away`, `dnd`, `offline`) der DM-Partner und des Nutzers.
+    statuses: Mutex<HashMap<String, String>>,
     /// Eigene Server-Emojis: Name → ID, beim ersten Bedarf geladen.
     custom_emojis: tokio::sync::Mutex<Option<HashMap<String, String>>>,
     /// Zuletzt bekannte Spaces; `posted` rechnet sie fort statt sie per REST neu zu laden.
@@ -204,6 +207,7 @@ impl MattermostBackend {
             users: Mutex::new(users),
             teams: Mutex::new(Vec::new()),
             dm_by_user: Mutex::new(HashMap::new()),
+            statuses: Mutex::new(HashMap::new()),
             custom_emojis: tokio::sync::Mutex::new(None),
             spaces: Mutex::new(HashMap::new()),
             calls: AtomicUsize::new(0),
@@ -343,14 +347,88 @@ impl MattermostBackend {
         }
     }
 
-    /// DM-Partner aller Kanäle in den Nutzer-Cache laden.
+    /// DM-Partner aller Kanäle in den Nutzer-Cache laden, samt Online-Status (nur fehlende).
     async fn ensure_dm_users(&self, channels: &[&ApiChannel]) -> Result<()> {
         let ids: Vec<&str> = channels
             .iter()
             .filter(|c| c.kind == "D")
             .filter_map(|c| api::dm_partner(&c.name, &self.me.id))
             .collect();
-        self.ensure_users(ids).await
+        self.ensure_users(ids.iter().copied()).await?;
+        self.ensure_statuses(&ids).await
+    }
+
+    async fn ensure_statuses(&self, ids: &[&str]) -> Result<()> {
+        let missing: Vec<&str> = {
+            let cache = lock(&self.statuses);
+            ids.iter().copied().filter(|id| !cache.contains_key(*id)).collect()
+        };
+        if missing.is_empty() {
+            return Ok(());
+        }
+        let statuses: Vec<ApiStatus> = self.post_json("/users/status/ids", &json!(missing)).await?;
+        lock(&self.statuses).extend(statuses.into_iter().map(|s| (s.user_id, s.status)));
+        Ok(())
+    }
+
+    /// Anzeige-Status eines Nutzers aus Status-Cache und Status-Text; None, solange unbekannt.
+    fn user_presence(&self, user_id: &str) -> Option<Presence> {
+        let status = lock(&self.statuses).get(user_id).cloned()?;
+        let now = chrono::Utc::now().timestamp_millis();
+        let emoji = lock(&self.users)
+            .get(user_id)
+            .and_then(|u| u.status_emoji_name(now));
+        let presence = api::presence(&status, emoji.as_deref());
+        // Solange die eigene Verbindung steht, ist „offline“ von Hand gesetzt.
+        Some(if user_id == self.me.id && presence == Presence::Offline {
+            Presence::Invisible
+        } else {
+            presence
+        })
+    }
+
+    /// Status der DM-Partner neu laden; Ereignisse nur für geänderte.
+    pub(super) async fn poll_statuses(&self) -> Result<Vec<BackendEvent>> {
+        let ids: Vec<String> = lock(&self.dm_by_user).keys().cloned().collect();
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let statuses: Vec<ApiStatus> = self.post_json("/users/status/ids", &json!(ids)).await?;
+        let changed: Vec<String> = {
+            let mut cache = lock(&self.statuses);
+            statuses
+                .into_iter()
+                .filter_map(|s| {
+                    let old = cache.insert(s.user_id.clone(), s.status.clone());
+                    (old.as_deref() != Some(s.status.as_str())).then_some(s.user_id)
+                })
+                .collect()
+        };
+        Ok(changed
+            .iter()
+            .filter_map(|id| self.presence_event(id))
+            .collect())
+    }
+
+    /// Status-Änderung per WebSocket (nur der eigene Status): eigenes Ereignis.
+    pub(super) fn status_changed(&self, status: ApiStatus) -> Option<BackendEvent> {
+        let user_id = status.user_id.clone();
+        lock(&self.statuses).insert(status.user_id, status.status);
+        self.presence_event(&user_id)
+    }
+
+    /// Ereignis nach geändertem Status oder Status-Text eines Nutzers; None bei fremden Nutzern ohne DM.
+    pub(super) fn presence_event(&self, user_id: &str) -> Option<BackendEvent> {
+        if user_id == self.me.id {
+            return Some(BackendEvent::OwnPresence {
+                presence: self.user_presence(user_id)?,
+            });
+        }
+        let dm = lock(&self.dm_by_user).get(user_id).cloned()?;
+        let mut space = lock(&self.spaces).get(&dm).cloned()?;
+        space.presence = self.user_presence(user_id);
+        lock(&self.spaces).insert(dm, space.clone());
+        Some(BackendEvent::SpaceUpdated { space })
     }
 
     /// Einzelnen Space neu laden (für Ereignisse).
@@ -383,6 +461,7 @@ impl MattermostBackend {
         space.status_emoji = lock(&self.users)
             .get(partner)
             .and_then(|u| u.status_emoji(now));
+        space.presence = self.user_presence(partner);
     }
 
     /// Nutzer per WebSocket geändert (z. B. Status): Cache aktualisieren, DM-Kanal liefern.
@@ -481,6 +560,8 @@ impl ChatBackend for MattermostBackend {
             }
         }
         let channels: Vec<&ApiChannel> = rows.iter().map(|(c, _, _)| c).collect();
+        // Status neu laden; danach halten ihn die WebSocket-Ereignisse aktuell.
+        lock(&self.statuses).clear();
         self.ensure_dm_users(&channels).await?;
         let favorites = self.favorites().await?;
         let spaces: Vec<Space> = rows
@@ -737,6 +818,37 @@ impl ChatBackend for MattermostBackend {
             .json(&props);
         self.send_req(rb).await?;
         Ok(true)
+    }
+
+    async fn own_presence(&self) -> Result<Option<Presence>> {
+        let status: ApiStatus = self.get(&format!("/users/{}/status", self.me.id)).await?;
+        lock(&self.statuses).insert(self.me.id.clone(), status.status);
+        Ok(self.user_presence(&self.me.id))
+    }
+
+    async fn set_presence(&self, presence: Presence, text: &str) -> Result<()> {
+        let (status, emoji) = api::mattermost_status(presence);
+        let path = format!("/users/{}/status", self.me.id);
+        let body = json!({ "user_id": self.me.id, "status": status });
+        self.send_req(self.req(Method::PUT, &path).json(&body)).await?;
+        // Frisch vom Server: ein anderer Client kann den Status-Text inzwischen geändert haben.
+        let me: ApiUser = self.get("/users/me").await?;
+        let current = me.status_emoji_name(chrono::Utc::now().timestamp_millis());
+        lock(&self.users).insert(me.id.clone(), me);
+        match emoji {
+            Some(emoji) => {
+                let body = json!({ "emoji": emoji, "text": text });
+                self.send_req(self.req(Method::PUT, "/users/me/status/custom").json(&body))
+                    .await?;
+            }
+            // Nur den eigenen Zwischenstufen-Text entfernen, nie einen selbst gesetzten (z. B. Urlaub).
+            None if current.as_deref().is_some_and(api::is_presence_emoji) => {
+                self.send_req(self.req(Method::DELETE, "/users/me/status/custom"))
+                    .await?;
+            }
+            None => {}
+        }
+        Ok(())
     }
 
     async fn mark_read(&self, space_id: &str) -> Result<()> {

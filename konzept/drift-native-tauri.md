@@ -20,6 +20,11 @@ offen, mit Grund).
 | Favorit/Stumm-Knöpfe beim Überfahren | gleich | gleich |
 | Retro-Optiken (mIRC, DOS): ungelesen mit „*“ vor dem Kanal und Farbe (mIRC rot, DOS gelb), weil Festbreitenschriften kaum fett wirken (Auftrag 2026-11-21) | – | gleich (beide) |
 | Status-Emoji, Erwähnungszähler, Fettdruck ungelesen, Stumm gedämpft | Status nur Unicode | gleich (eigene Server-Emojis als Status: Abweichung, nur Unicode) |
+| Optik „seequ“ (Messenger 2001): DMs mit Status-Punkt, ungelesen grün blinkend (Auftrag 2026-11-24) | – | Abweichung: native nur Farben, ohne Status-Punkt |
+| Online-Status (Mattermost): Punkt je DM, in seequ als Kleeblatt; Statusmenü im Kontokopf mit sieben Stufen (Zwischenstufen als Status-Text mit festem Emoji); Status der DM-Partner per Abfrage alle 60 s, eigener per WebSocket | – | Abweichung: native ohne Status-Anzeige und ohne Menü; `Space.presence` und `OwnPresence` liegen bereit |
+| Passwort und Client-Secret mit Augen-Knopf zum Anzeigen (`PasswordInput.svelte`) | verdeckt, ohne Anzeigen | Abweichung: native ohne Augen-Knopf |
+| Ton bei DMs und Erwähnungen: Kern entscheidet (`Alert.sound`, Einstellung `sound`, sonst an für `SOUND_THEMES`), Ton je Optik in `sound.ts` (seequ „Uh-oh“, sonst Ping) | – | Abweichung: native ohne Ton und ohne Schalter (keine Audio-Abhängigkeit); `Alert.sound` liegt bereit |
+| Einstellungen: ⓘ neben „Google Chat“ mit Kurzanleitung und Direktlinks in die Google Cloud Console, „Scopes kopieren“ (Auftrag 2026-11-24) | – | Abweichung: native nur Link auf `konzept/google-setup.md` |
 | Favoriten per Ziehen umsortieren bzw. in/aus Favoriten ziehen | fehlte | Abweichung: iced hat kein Drag&Drop; Favorit per Knopf |
 
 ## Kanal-Ansicht und Eingabe

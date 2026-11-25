@@ -164,17 +164,17 @@ html:root:is([data-theme="mirc"], [data-theme="dos"]) .sidebar .item.unread::bef
   font-weight: bold;
 }
 
-/* Kontokopf: Name und Art in einer Zeile, passt in die niedrige Kopfhöhe. */
-html:root:is([data-theme="mirc"], [data-theme="dos"]) .sidebar > header {
+/* Kontokopf: Name und Art in einer Zeile, passt in die niedrige Kopfhöhe (auch seequ). */
+html:root:is([data-theme="mirc"], [data-theme="dos"], [data-theme="seequ"]) .sidebar > header {
   display: flex;
   align-items: center;
   gap: 1ch;
   padding: 0 8px;
 }
-html:root:is([data-theme="mirc"], [data-theme="dos"]) .sidebar > header .title {
+html:root:is([data-theme="mirc"], [data-theme="dos"], [data-theme="seequ"]) .sidebar > header .title {
   font-size: inherit;
 }
-html:root:is([data-theme="mirc"], [data-theme="dos"]) .sidebar > header .sub {
+html:root:is([data-theme="mirc"], [data-theme="dos"], [data-theme="seequ"]) .sidebar > header .sub {
   font-size: inherit;
   white-space: nowrap;
 }

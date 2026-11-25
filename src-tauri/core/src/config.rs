@@ -41,6 +41,8 @@ pub struct Config {
     pub theme: String,
     /// OS-Benachrichtigungen bei DMs und Erwähnungen.
     pub notifications: bool,
+    /// Ton bei DMs und Erwähnungen; fehlt der Eintrag, gilt die Vorgabe der Optik (`app::SOUND_THEMES`).
+    pub sound: Option<bool>,
     pub google: Option<GoogleConfig>,
     /// GIF-Suche (GIPHY-kompatible API); fehlt der Abschnitt, ist sie aus.
     pub gif: Option<GifConfig>,
@@ -52,6 +54,7 @@ impl Default for Config {
         Self {
             theme: "mattermost".into(),
             notifications: true,
+            sound: None,
             google: None,
             gif: None,
             poll: PollConfig::default(),

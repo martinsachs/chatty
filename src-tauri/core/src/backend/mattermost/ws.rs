@@ -16,7 +16,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::tungstenite::protocol::Role;
 
 use super::MattermostBackend;
-use super::api::{ApiChannel, ApiPost, ApiUser, text_mentions};
+use super::api::{ApiChannel, ApiPost, ApiStatus, ApiUser, text_mentions};
 use crate::backend::EventSender;
 use crate::error::{Error, Result};
 use crate::model::BackendEvent;
@@ -29,6 +29,9 @@ const PING_INTERVAL: Duration = Duration::from_secs(20);
 const READ_TIMEOUT: Duration = Duration::from_secs(60);
 /// Höchstdauer für das Verarbeiten eines Ereignisses (REST-Nachladen); danach verfällt es.
 const HANDLE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Online-Status der DM-Partner neu laden: `status_change` bekommt nur der Nutzer selbst
+/// (geprüft gegen Mattermost 12.1); die Webapp fragt ebenfalls regelmäßig ab.
+const STATUS_POLL_INTERVAL: Duration = Duration::from_secs(60);
 /// Erst eine Sitzung dieser Länge gilt als stabil: Abrisse danach werden still neu verbunden.
 const STABLE_SESSION: Duration = Duration::from_secs(30);
 
@@ -127,9 +130,27 @@ async fn session(backend: &MattermostBackend, tx: &EventSender) -> End {
     let mut seq = 1u64;
     let mut ping =
         tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
+    let mut status_poll = tokio::time::interval_at(
+        tokio::time::Instant::now() + STATUS_POLL_INTERVAL,
+        STATUS_POLL_INTERVAL,
+    );
     let mut deadline = tokio::time::Instant::now() + READ_TIMEOUT;
     loop {
         let next = tokio::select! {
+            _ = status_poll.tick() => {
+                // Fehler unkritisch: der nächste Abruf holt den Status nach.
+                let events = tokio::time::timeout(HANDLE_TIMEOUT, backend.poll_statuses())
+                    .await
+                    .ok()
+                    .and_then(Result::ok)
+                    .unwrap_or_default();
+                for ev in events {
+                    if tx.send((id.clone(), ev)).is_err() {
+                        return End::Closed;
+                    }
+                }
+                continue;
+            }
             _ = ping.tick() => {
                 seq += 1;
                 let msg = json!({ "seq": seq, "action": "ping" }).to_string();
@@ -283,12 +304,19 @@ async fn handle(backend: &MattermostBackend, ev: &WsEvent) -> Result<Vec<Backend
             else {
                 return Ok(Vec::new());
             };
+            let user_id = user.id.clone();
             match backend.user_updated(user) {
                 Some(dm) => Ok(vec![BackendEvent::SpaceUpdated {
                     space: backend.fetch_space(&dm).await?,
                 }]),
-                None => Ok(Vec::new()),
+                // Eigenes Profil: Status-Text kann eine Zwischenstufe setzen oder entfernen.
+                None => Ok(backend.presence_event(&user_id).into_iter().collect()),
             }
+        }
+        // Online-Status geändert (eigener oder eines DM-Partners)
+        "status_change" => {
+            let status: ApiStatus = serde_json::from_value(data.clone())?;
+            Ok(backend.status_changed(status).into_iter().collect())
         }
         // Kanal geändert, z. B. Header oder Name
         "channel_updated" => {

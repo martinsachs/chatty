@@ -1,11 +1,19 @@
+<script lang="ts" module>
+  export type SettingsTab = "accounts" | "add-mm" | "settings";
+</script>
+
 <script lang="ts">
   import { api, type AccountInfo } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
   import { setZoom, zoom, ZOOMS } from "$lib/zoom.svelte";
+  import GoogleSetupHelp from "./GoogleSetupHelp.svelte";
+  import PasswordInput from "./PasswordInput.svelte";
 
-  let { onClose }: { onClose: () => void } = $props();
+  let { onClose, initialTab }: { onClose: () => void; initialTab?: SettingsTab } = $props();
 
-  let tab = $state<"accounts" | "add-mm" | "settings">(chat.accounts.length ? "accounts" : "add-mm");
+  // Nur der Startwert zählt: der Dialog wird bei jedem Öffnen neu erzeugt.
+  // svelte-ignore state_referenced_locally
+  let tab = $state<SettingsTab>(initialTab ?? (chat.accounts.length ? "accounts" : "add-mm"));
   let theme = $state(chat.theme);
   let notifications = $state(chat.notifications);
 
@@ -152,21 +160,17 @@
           <p>Noch keine Konten.</p>
         {/each}
       {:else if tab === "add-mm"}
-        <h3>Google Chat</h3>
+        <h3>Google Chat <GoogleSetupHelp /></h3>
         {#if chat.googleConfigured && !editClient}
           <p>Anmeldung im Browser mit deinem Google-Konto.</p>
           <button class="btn" disabled={busy} onclick={() => addGoogle()}>Mit Google anmelden</button>
           <button class="btn secondary" disabled={busy} onclick={() => (editClient = true)}>OAuth-Client ändern</button>
         {:else}
-          <p class="muted">OAuth-Client vom Workspace-Admin eintragen (siehe usage.md). Wird in <code>chatty.toml</code> gespeichert.</p>
+          <p class="muted">OAuth-Client vom Workspace-Admin eintragen (Anleitung: ⓘ). Wird in <code>chatty.toml</code> gespeichert.</p>
           <form onsubmit={saveClient}>
             <label class="field">Client-ID<input bind:value={clientId} placeholder="….apps.googleusercontent.com" /></label>
             <label class="field"
-              >Client-Secret{#if chat.googleConfigured}<small class="muted"> (leer = unverändert)</small>{/if}<input
-                type="password"
-                bind:value={clientSecret}
-                autocomplete="off"
-              /></label
+              >Client-Secret{#if chat.googleConfigured}<small class="muted"> (leer = unverändert)</small>{/if}<PasswordInput bind:value={clientSecret} autocomplete="off" /></label
             >
             <button class="btn" disabled={busy}>Speichern</button>
             {#if chat.googleConfigured}
@@ -179,7 +183,7 @@
         <form onsubmit={addMattermost}>
           <label class="field">Server-URL<input bind:value={server} required placeholder="https://mattermost.example.org" /></label>
           <label class="field">Benutzername oder E-Mail<input bind:value={login} required autocomplete="username" /></label>
-          <label class="field">Passwort<input type="password" bind:value={password} required autocomplete="current-password" /></label>
+          <label class="field">Passwort<PasswordInput bind:value={password} required autocomplete="current-password" /></label>
           <label class="field">MFA-Code (falls aktiv)<input bind:value={mfa} inputmode="numeric" autocomplete="one-time-code" /></label>
           <button class="btn" disabled={busy}>Anmelden</button>
         </form>
@@ -192,6 +196,7 @@
             <option value="ehex">ehex</option>
             <option value="mirc">mIRC</option>
             <option value="dos">DOS (Norton Commander)</option>
+            <option value="seequ">seequ (Messenger 2001, mit Ton)</option>
           </select>
         </label>
         <label class="field">
@@ -203,6 +208,10 @@
         <label class="check">
           <input type="checkbox" bind:checked={notifications} onchange={saveSettings} />
           Desktop-Benachrichtigungen bei Direktnachrichten und Erwähnungen
+        </label>
+        <label class="check">
+          <input type="checkbox" checked={chat.sound} onchange={(e) => chat.saveSound(e.currentTarget.checked)} />
+          Ton bei Direktnachrichten und Erwähnungen
         </label>
 
         <h3>GIF-Suche (optional)</h3>

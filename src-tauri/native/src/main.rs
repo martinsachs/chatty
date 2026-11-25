@@ -1585,7 +1585,7 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
             update(s, *action)
         }
         Message::Event(account, mut event) => {
-            if let Some(n) = s.app.handle_event(&account, &mut event) {
+            if let Some(n) = s.app.handle_event(&account, &mut event).notification {
                 notify(n);
             }
             let current = s.account.as_ref() == Some(&account);
@@ -1639,6 +1639,8 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
                     }
                     Task::none()
                 }
+                // Online-Status zeigt nur die Tauri-Variante (konzept/drift-native-tauri.md).
+                BackendEvent::OwnPresence { .. } => Task::none(),
                 BackendEvent::Status { online, detail } => {
                     let mut tasks = vec![refresh_info(s)];
                     if online {

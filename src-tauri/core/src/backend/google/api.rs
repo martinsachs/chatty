@@ -332,6 +332,7 @@ pub fn map_space(g: &GSpace, name: String, unread: bool) -> Space {
         favorite: false,
         muted: false,
         status_emoji: None,
+        presence: None,
         header: String::new(),
     }
 }

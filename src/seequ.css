@@ -1,0 +1,200 @@
+/*
+ * Optik "seequ": Messenger um 2001 (Windows-2000-Fenster, Kontaktliste, „Name (12:34)“ über dem Text).
+ * Kein Logo eines echten Messengers; Online-Status als Kleeblatt. Ton „Uh-oh“ in src/lib/sound.ts (THEME_SOUNDS).
+ * Präfix `html:root[...]` schlägt die Svelte-Klassen (.x.svelte-hash) per Spezifität, wie in retro.css.
+ */
+
+:root[data-theme="seequ"] {
+  --font: Tahoma, Verdana, "Segoe UI", "DejaVu Sans", sans-serif;
+  --rail-bg: #d4d0c8;
+  --sidebar-bg: #ffffff;
+  --sidebar-header-bg: #d4d0c8;
+  --sidebar-text: #000000;
+  --sidebar-text-strong: #000000;
+  --sidebar-hover: #e8f0e0;
+  --sidebar-active-bg: #c8e6c0;
+  --sidebar-active-bar: transparent;
+  --badge-bg: #2e9a3a;
+  --badge-text: #ffffff;
+  --mention-bg: #d42020;
+  --center-bg: #ffffff;
+  --text: #000000;
+  --text-muted: #6b6b6b;
+  --border: #808080;
+  --hover: #f4f4f0;
+  --accent: #2e9a3a;
+  --accent-text: #ffffff;
+  --link: #0000cc;
+  --mention-text: #d42020;
+  --mention-highlight: #fff8c4;
+  --online: #2e9a3a;
+  --error: #d42020;
+  --avatar-radius: 0;
+  --channel-prefix: "";
+  --radius: 0;
+  --header-height: 28px;
+  --seequ-face: #d4d0c8;
+  --seequ-light: #ffffff;
+  --seequ-shadow: #808080;
+  /* Kleeblatt als Masken für den Online-Status: Füllung und dieselbe Form mit Rand. */
+  --seequ-clover: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 12.6Q12.9 17.5 11.4 22.4' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round'/%3E%3Cpath d='M12 10.6C9.2 9.2 7 7.4 7.4 4.9C7.8 2.7 10.6 2.3 12 4.6C13.4 2.3 16.2 2.7 16.6 4.9C17 7.4 14.8 9.2 12 10.6Z' transform='rotate(45 12 12)'/%3E%3Cpath d='M12 10.6C9.2 9.2 7 7.4 7.4 4.9C7.8 2.7 10.6 2.3 12 4.6C13.4 2.3 16.2 2.7 16.6 4.9C17 7.4 14.8 9.2 12 10.6Z' transform='rotate(135 12 12)'/%3E%3Cpath d='M12 10.6C9.2 9.2 7 7.4 7.4 4.9C7.8 2.7 10.6 2.3 12 4.6C13.4 2.3 16.2 2.7 16.6 4.9C17 7.4 14.8 9.2 12 10.6Z' transform='rotate(225 12 12)'/%3E%3Cpath d='M12 10.6C9.2 9.2 7 7.4 7.4 4.9C7.8 2.7 10.6 2.3 12 4.6C13.4 2.3 16.2 2.7 16.6 4.9C17 7.4 14.8 9.2 12 10.6Z' transform='rotate(315 12 12)'/%3E%3C/svg%3E");
+  --seequ-clover-outline: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 12.6Q12.9 17.5 11.4 22.4' fill='none' stroke='black' stroke-width='3.9' stroke-linecap='round'/%3E%3Cg stroke='black' stroke-width='2.6' stroke-linejoin='round'%3E%3Cpath d='M12 10.6C9.2 9.2 7 7.4 7.4 4.9C7.8 2.7 10.6 2.3 12 4.6C13.4 2.3 16.2 2.7 16.6 4.9C17 7.4 14.8 9.2 12 10.6Z' transform='rotate(45 12 12)'/%3E%3Cpath d='M12 10.6C9.2 9.2 7 7.4 7.4 4.9C7.8 2.7 10.6 2.3 12 4.6C13.4 2.3 16.2 2.7 16.6 4.9C17 7.4 14.8 9.2 12 10.6Z' transform='rotate(135 12 12)'/%3E%3Cpath d='M12 10.6C9.2 9.2 7 7.4 7.4 4.9C7.8 2.7 10.6 2.3 12 4.6C13.4 2.3 16.2 2.7 16.6 4.9C17 7.4 14.8 9.2 12 10.6Z' transform='rotate(225 12 12)'/%3E%3Cpath d='M12 10.6C9.2 9.2 7 7.4 7.4 4.9C7.8 2.7 10.6 2.3 12 4.6C13.4 2.3 16.2 2.7 16.6 4.9C17 7.4 14.8 9.2 12 10.6Z' transform='rotate(315 12 12)'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+html:root[data-theme="seequ"] body {
+  font-size: 12px;
+}
+html:root[data-theme="seequ"] * {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Titelleisten wie Windows-2000-Fenster. */
+html:root[data-theme="seequ"] .center > header,
+html:root[data-theme="seequ"] .rhs > header {
+  background: linear-gradient(90deg, #0a246a, #a6caf0);
+  color: #ffffff;
+  border-bottom: none;
+}
+html:root[data-theme="seequ"] .center > header .icon-btn {
+  color: #ffffff;
+}
+html:root[data-theme="seequ"] .center > header .search {
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid var(--seequ-shadow);
+  padding: 1px 4px;
+}
+
+/* Nachrichtenfenster: „Name (12:34)“ in Farbe, Text darunter, ohne Avatare. */
+html:root[data-theme="seequ"] .msg {
+  padding: 2px 10px;
+}
+html:root[data-theme="seequ"] .gutter {
+  display: none;
+}
+html:root[data-theme="seequ"] .msg .head {
+  gap: 0.5ch;
+}
+html:root[data-theme="seequ"] .msg .sender {
+  color: #0000cc;
+  font-weight: bold;
+}
+html:root[data-theme="seequ"] .msg .time {
+  color: #0000cc;
+  font-size: inherit;
+}
+html:root[data-theme="seequ"] .msg .time::before {
+  content: "(";
+}
+html:root[data-theme="seequ"] .msg .time::after {
+  content: ")";
+}
+html:root[data-theme="seequ"] .msg.mentioned {
+  background: var(--mention-highlight);
+}
+html:root[data-theme="seequ"] .msg.mentioned .sender,
+html:root[data-theme="seequ"] .msg.mentioned .time {
+  color: #d42020;
+}
+html:root[data-theme="seequ"] .msg:hover {
+  background: var(--hover);
+}
+
+/* Erhabene Schaltflächen, vertiefte Eingabefelder. */
+html:root[data-theme="seequ"] .team,
+html:root[data-theme="seequ"] .btn,
+html:root[data-theme="seequ"] .act,
+html:root[data-theme="seequ"] .toast {
+  background: var(--seequ-face);
+  color: #000000;
+  border: 2px solid;
+  border-color: var(--seequ-light) var(--seequ-shadow) var(--seequ-shadow) var(--seequ-light);
+  font-weight: normal;
+}
+html:root[data-theme="seequ"] .team.active,
+html:root[data-theme="seequ"] .btn:active {
+  border-color: var(--seequ-shadow) var(--seequ-light) var(--seequ-light) var(--seequ-shadow);
+}
+html:root[data-theme="seequ"] .toast button {
+  color: #000000;
+}
+html:root[data-theme="seequ"] .sidebar .filter,
+html:root[data-theme="seequ"] .sidebar .sort,
+html:root[data-theme="seequ"] .composer textarea,
+html:root[data-theme="seequ"] .field input,
+html:root[data-theme="seequ"] .field select {
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid;
+  border-color: var(--seequ-shadow) var(--seequ-light) var(--seequ-light) var(--seequ-shadow);
+}
+html:root[data-theme="seequ"] .composer {
+  background: var(--seequ-face);
+  padding: 4px;
+  margin: 0;
+  border-width: 1px 0 0;
+}
+
+/* Kontaktliste: Abschnitte als graue Gruppenköpfe, DMs mit Status-Punkt. */
+html:root[data-theme="seequ"] .sidebar {
+  border-right: 2px solid var(--seequ-shadow);
+}
+html:root[data-theme="seequ"] .sidebar .section {
+  background: var(--seequ-face);
+  color: #000000;
+  font-weight: bold;
+}
+html:root[data-theme="seequ"] .sidebar .item[data-kind="direct"] .icon,
+html:root[data-theme="seequ"] .sidebar .item[data-kind="group"] .icon {
+  color: #9a9a9a;
+  opacity: 1;
+}
+/* Neue Nachricht: Punkt grün und blinkend, wie früher in der Taskleiste. */
+html:root[data-theme="seequ"] .sidebar .item.unread[data-kind="direct"] .icon,
+html:root[data-theme="seequ"] .sidebar .item.unread[data-kind="group"] .icon {
+  color: var(--online);
+  animation: seequ-blink 1s steps(1) infinite;
+}
+@keyframes seequ-blink {
+  50% {
+    color: #d42020;
+  }
+}
+
+/* Online-Status als Kleeblatt: Umriss in dunkler Statusfarbe, darüber die Füllung. */
+html:root[data-theme="seequ"] .presence {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: color-mix(in srgb, var(--presence-color) 40%, #000000);
+  -webkit-mask: var(--seequ-clover-outline) center / contain no-repeat;
+  mask: var(--seequ-clover-outline) center / contain no-repeat;
+}
+html:root[data-theme="seequ"] .presence::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--presence-color);
+  -webkit-mask: var(--seequ-clover) center / contain no-repeat;
+  mask: var(--seequ-clover) center / contain no-repeat;
+}
+html:root[data-theme="seequ"] .presence[data-presence="invisible"]::after {
+  background: #ffffff;
+}
+/* Neue Nachricht in einer DM: Kleeblatt blinkt. */
+html:root[data-theme="seequ"] .sidebar .item.unread .presence {
+  animation: seequ-flash 1s steps(1) infinite;
+}
+@keyframes seequ-flash {
+  50% {
+    opacity: 0.2;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html:root[data-theme="seequ"] .sidebar .item .icon,
+  html:root[data-theme="seequ"] .sidebar .item .presence {
+    animation: none;
+  }
+}

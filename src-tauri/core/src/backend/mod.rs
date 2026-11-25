@@ -66,7 +66,9 @@ use async_trait::async_trait;
 use tokio::sync::{mpsc, watch};
 
 use crate::error::Result;
-use crate::model::{Account, Attachment, BackendEvent, Message, Page, Space, UploadFile, User};
+use crate::model::{
+    Account, Attachment, BackendEvent, Message, Page, Presence, Space, UploadFile, User,
+};
 
 /// Ereigniskanal: (Konto-ID, Ereignis).
 pub type EventSender = mpsc::UnboundedSender<(String, BackendEvent)>;
@@ -141,6 +143,17 @@ pub trait ChatBackend: Send + Sync {
     async fn search(&self, query: &str) -> Result<Vec<Message>>;
 
     async fn mark_read(&self, space_id: &str) -> Result<()>;
+
+    /// Eigener Online-Status; None, wenn das Backend keinen kennt.
+    async fn own_presence(&self) -> Result<Option<Presence>> {
+        Ok(None)
+    }
+
+    /// Eigenen Online-Status setzen. `text` ist der Status-Text, den andere bei den Zwischenstufen
+    /// (gesprächsbereit, nicht verfügbar, beschäftigt) sehen.
+    async fn set_presence(&self, _presence: Presence, _text: &str) -> Result<()> {
+        Err(crate::error::Error::other("Vom Backend nicht unterstützt"))
+    }
 
     /// Beitretbare Spaces (noch nicht Mitglied), passend zu `query`.
     async fn browse_spaces(&self, _query: &str) -> Result<Vec<Space>> {

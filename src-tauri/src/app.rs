@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use chatty_core::app::file_name;
 use chatty_core::error::{Error, Result};
 use chatty_core::gif::Gif;
-use chatty_core::model::{Account, Attachment, BackendEvent, Message, Page, Space};
+use chatty_core::model::{Account, Attachment, BackendEvent, Message, Page, Presence, Space};
 use chatty_core::{App, AppInfo};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -105,11 +105,14 @@ fn size_main_window(handle: &AppHandle) {
 struct ChatEvent<'a> {
     account: &'a str,
     event: &'a BackendEvent,
+    /// Ton spielen (Entscheidung des Kerns, siehe `Alert`).
+    sound: bool,
 }
 
 async fn event_loop(handle: AppHandle, app: Arc<App>, mut rx: chatty_core::app::Events) {
     while let Some((account, mut event)) = rx.recv().await {
-        if let Some(n) = app.handle_event(&account, &mut event) {
+        let alert = app.handle_event(&account, &mut event);
+        if let Some(n) = alert.notification {
             let _ = handle
                 .notification()
                 .builder()
@@ -122,6 +125,7 @@ async fn event_loop(handle: AppHandle, app: Arc<App>, mut rx: chatty_core::app::
             ChatEvent {
                 account: &account,
                 event: &event,
+                sound: alert.sound,
             },
         );
     }
@@ -139,6 +143,11 @@ pub async fn app_info(state: State<'_, AppState>) -> Cmd<AppInfo> {
 #[tauri::command]
 pub fn set_settings(state: State<'_, AppState>, theme: String, notifications: bool) -> Cmd<()> {
     state.app.set_settings(theme, notifications)
+}
+
+#[tauri::command]
+pub fn set_sound(state: State<'_, AppState>, on: bool) -> Cmd<()> {
+    state.app.set_sound(on)
 }
 
 #[tauri::command]
@@ -394,6 +403,21 @@ pub async fn search(
 #[tauri::command]
 pub async fn mark_read(state: State<'_, AppState>, account: String, space: String) -> Cmd<()> {
     state.app.mark_read(&account, &space).await
+}
+
+#[tauri::command]
+pub async fn own_presence(state: State<'_, AppState>, account: String) -> Cmd<Option<Presence>> {
+    state.app.own_presence(&account).await
+}
+
+#[tauri::command]
+pub async fn set_presence(
+    state: State<'_, AppState>,
+    account: String,
+    presence: Presence,
+    text: String,
+) -> Cmd<()> {
+    state.app.set_presence(&account, presence, &text).await
 }
 
 /// Meldet den offenen Space (Polling-Priorität, Benachrichtigungen).

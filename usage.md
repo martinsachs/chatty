@@ -78,8 +78,9 @@ Installation). Es gibt allein keinen Zugriff auf Daten, dafür ist immer die Anm
 Alle Einträge sind optional:
 
 ```toml
-theme = "mattermost"      # oder "slack", "ehex", "mirc", "dos"
+theme = "mattermost"      # oder "slack", "ehex", "mirc", "dos", "seequ"
 notifications = true      # Desktop-Benachrichtigungen
+# sound = true            # Ton bei DMs und Erwähnungen; ohne Eintrag nur bei "seequ" an (nur Tauri-Variante)
 
 [google]
 client_id = "..."
