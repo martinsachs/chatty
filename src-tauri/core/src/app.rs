@@ -15,13 +15,17 @@ use crate::backend::{Avatar, ChatBackend, EventSender, MAX_PREVIEW};
 use crate::config::{self, Config, GoogleConfig};
 use crate::error::{Error, Result};
 use crate::model::{
-    Account, Attachment, BackendEvent, BackendKind, Message, Page, Space, SpaceKind, UploadFile,
+    Account, Attachment, BackendEvent, BackendKind, Message, Page, Presence, Space, SpaceKind,
+    UploadFile,
 };
 use crate::secrets;
 use crate::store::Store;
 
 /// Bekannte Optiken (Namen wie in `chatty.toml`).
-pub const THEMES: [&str; 5] = ["mattermost", "slack", "ehex", "mirc", "dos"];
+pub const THEMES: [&str; 6] = ["mattermost", "slack", "ehex", "mirc", "dos", "seequ"];
+
+/// Optiken, bei denen der Ton ohne eigene Einstellung (`sound` in `chatty.toml`) an ist.
+pub const SOUND_THEMES: [&str; 1] = ["seequ"];
 
 /// Ereignisse aller Konten: (Konto-ID, Ereignis).
 pub type Events = mpsc::UnboundedReceiver<(String, BackendEvent)>;
@@ -55,6 +59,8 @@ pub struct App {
 pub struct AppInfo {
     pub theme: String,
     pub notifications: bool,
+    /// Ton bei Benachrichtigungen, nach Einstellung oder Vorgabe der Optik.
+    pub sound: bool,
     pub google_configured: bool,
     /// Client-ID zum Vorbelegen des Formulars; das Secret geht nicht an die Oberfläche.
     pub google_client_id: String,
@@ -73,6 +79,31 @@ pub struct AccountInfo {
 pub struct Notification {
     pub title: String,
     pub body: String,
+}
+
+/// Vom Kern entschiedene Reaktion auf ein Ereignis; ausführen muss die Oberfläche.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Alert {
+    /// OS-Benachrichtigung, wenn eingeschaltet.
+    pub notification: Option<Notification>,
+    /// Ton spielen; welcher, entscheidet die Oberfläche je Optik.
+    pub sound: bool,
+}
+
+/// Ton an nach Einstellung, sonst nach Vorgabe der Optik.
+fn sound_on(cfg: &Config) -> bool {
+    cfg.sound.unwrap_or_else(|| SOUND_THEMES.contains(&cfg.theme.as_str()))
+}
+
+fn notification(m: &Message, space: Option<&Space>) -> Notification {
+    let title = match space {
+        Some(s) if s.kind == SpaceKind::Channel => format!("{} in {}", m.sender.name, s.name),
+        _ => m.sender.name.clone(),
+    };
+    Notification {
+        title: crate::model::notification_text(&title),
+        body: crate::model::notification_text(&m.text.chars().take(200).collect::<String>()),
+    }
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -220,9 +251,9 @@ impl App {
         }
     }
 
-    /// Ereignis in den Cache übernehmen (Flags ergänzen) und entscheiden, ob eine OS-Benachrichtigung
-    /// fällig ist. Danach gibt die Oberfläche das Ereignis weiter bzw. zeigt es an.
-    pub fn handle_event(&self, account: &str, event: &mut BackendEvent) -> Option<Notification> {
+    /// Ereignis in den Cache übernehmen (Flags ergänzen) und entscheiden, ob OS-Benachrichtigung oder
+    /// Ton fällig sind. Danach gibt die Oberfläche das Ereignis weiter bzw. zeigt es an.
+    pub fn handle_event(&self, account: &str, event: &mut BackendEvent) -> Alert {
         let cached = {
             let mut store = self.store();
             if let BackendEvent::SpaceUpdated { space } = event {
@@ -237,42 +268,39 @@ impl App {
                     store.delete_message(account, message_id)
                 }
                 BackendEvent::SpaceUpdated { space } => store.put_space(account, space),
-                BackendEvent::Status { .. } => Ok(()),
+                BackendEvent::Status { .. } | BackendEvent::OwnPresence { .. } => Ok(()),
             }
         };
         if let Err(e) = cached {
             eprintln!("Cache: {e}");
         }
         match &*event {
-            BackendEvent::MessageCreated { message } => self.notification(account, message),
-            _ => None,
+            BackendEvent::MessageCreated { message } => self.alert(account, message),
+            _ => Alert::default(),
         }
     }
 
-    /// OS-Benachrichtigung bei DM oder Erwähnung, wenn der Space nicht gerade sichtbar ist.
-    fn notification(&self, account: &str, m: &Message) -> Option<Notification> {
-        if m.mine || m.is_reply && !m.mentions_me || !lock(&self.config).notifications {
-            return None;
+    /// Benachrichtigung und Ton bei DM oder Erwähnung, wenn der Space nicht gerade sichtbar ist.
+    fn alert(&self, account: &str, m: &Message) -> Alert {
+        if m.mine || m.is_reply && !m.mentions_me {
+            return Alert::default();
         }
         let focused = *self.focused.borrow();
         let visible = lock(&self.active).get(account) == Some(&m.space_id);
         if focused && visible {
-            return None;
+            return Alert::default();
         }
         let space = self.store().space(account, &m.space_id).ok().flatten();
         let is_dm = space.as_ref().is_some_and(|s| s.kind != SpaceKind::Channel);
         let muted = space.as_ref().is_some_and(|s| s.muted);
         if !(is_dm && !muted || m.mentions_me) {
-            return None;
+            return Alert::default();
         }
-        let title = match &space {
-            Some(s) if s.kind == SpaceKind::Channel => format!("{} in {}", m.sender.name, s.name),
-            _ => m.sender.name.clone(),
-        };
-        Some(Notification {
-            title: crate::model::notification_text(&title),
-            body: crate::model::notification_text(&m.text.chars().take(200).collect::<String>()),
-        })
+        let cfg = lock(&self.config);
+        Alert {
+            notification: cfg.notifications.then(|| notification(m, space.as_ref())),
+            sound: sound_on(&cfg),
+        }
     }
 
     fn store(&self) -> MutexGuard<'_, Store> {
@@ -330,6 +358,7 @@ impl App {
         let cfg = self.config();
         let running = self.running.read().await;
         AppInfo {
+            sound: sound_on(&cfg),
             theme: cfg.theme,
             notifications: cfg.notifications,
             google_configured: cfg.google.as_ref().is_some_and(|g| !g.client_id.is_empty()),
@@ -352,6 +381,13 @@ impl App {
         let mut cfg = lock(&self.config);
         cfg.theme = theme;
         cfg.notifications = notifications;
+        config::save_config(&self.cfg_dir, &cfg)
+    }
+
+    /// Ton bei Benachrichtigungen für alle Optiken setzen; ersetzt die Vorgabe der Optik.
+    pub fn set_sound(&self, on: bool) -> Result<()> {
+        let mut cfg = lock(&self.config);
+        cfg.sound = Some(on);
         config::save_config(&self.cfg_dir, &cfg)
     }
 
@@ -653,6 +689,15 @@ impl App {
         self.backend(account).await?.mark_read(space).await
     }
 
+    /// Eigener Online-Status; None, wenn das Backend keinen kennt (Google).
+    pub async fn own_presence(&self, account: &str) -> Result<Option<Presence>> {
+        self.backend(account).await?.own_presence().await
+    }
+
+    pub async fn set_presence(&self, account: &str, presence: Presence, text: &str) -> Result<()> {
+        self.backend(account).await?.set_presence(presence, text).await
+    }
+
     // ---------- Fenster-Zustand ----------
 
     /// Meldet den offenen Space (Polling-Priorität, Benachrichtigungen).
@@ -785,18 +830,37 @@ mod tests {
         let mut ev = BackendEvent::MessageCreated {
             message: msg("s1", true),
         };
-        assert!(app.handle_event("a", &mut ev).is_some(), "Erwähnung");
+        assert!(app.handle_event("a", &mut ev).notification.is_some(), "Erwähnung");
         app.set_active("a", Some("s1".into())).await;
-        assert!(app.handle_event("a", &mut ev).is_none(), "sichtbar");
+        assert_eq!(app.handle_event("a", &mut ev), Alert::default(), "sichtbar");
         app.set_focused(false);
-        assert!(app.handle_event("a", &mut ev).is_some(), "ohne Fokus");
+        assert!(app.handle_event("a", &mut ev).notification.is_some(), "ohne Fokus");
         let mut plain = BackendEvent::MessageCreated {
             message: msg("s2", false),
         };
-        assert!(
-            app.handle_event("a", &mut plain).is_none(),
+        assert_eq!(
+            app.handle_event("a", &mut plain),
+            Alert::default(),
             "Kanal unbekannt, keine Erwähnung"
         );
+    }
+
+    #[test]
+    fn sound_follows_theme_until_set() {
+        let (_d, app) = app();
+        let mut ev = BackendEvent::MessageCreated {
+            message: msg("s1", true),
+        };
+        assert!(!app.handle_event("a", &mut ev).sound, "Standard: aus");
+        app.set_settings("seequ".into(), false).unwrap();
+        let alert = app.handle_event("a", &mut ev);
+        assert!(alert.sound, "seequ: an");
+        assert!(alert.notification.is_none(), "Ton auch ohne OS-Benachrichtigung");
+        app.set_sound(false).unwrap();
+        assert!(!app.handle_event("a", &mut ev).sound, "Einstellung vor Optik");
+        app.set_settings("mattermost".into(), true).unwrap();
+        app.set_sound(true).unwrap();
+        assert!(app.handle_event("a", &mut ev).sound, "Ton für alle Optiken");
     }
 
     #[test]

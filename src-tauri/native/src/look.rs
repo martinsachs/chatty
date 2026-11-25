@@ -143,6 +143,26 @@ impl Look {
                 avatars: false,
                 unread: Some(color!(0xffff55)),
             },
+            // Messenger um 2001: Windows-2000-Grau, grüner Akzent; Ton nur in der Tauri-Variante.
+            "seequ" => Look {
+                name: "seequ",
+                text: color!(0x000000),
+                muted: color!(0x6b6b6b),
+                accent: color!(0x2e9a3a),
+                mention: color!(0xd42020),
+                error: color!(0xd42020),
+                sidebar_bg: color!(0xffffff),
+                sidebar_text: color!(0x000000),
+                sidebar_active: color!(0xc8e6c0),
+                header_bg: color!(0x0a246a),
+                header_text: color!(0xffffff),
+                composer_bg: color!(0xd4d0c8),
+                link: color!(0x0000cc),
+                code_bg: color!(0xf4f4f0),
+                border: color!(0x808080),
+                avatars: false,
+                ..base
+            },
             _ => base,
         }
     }

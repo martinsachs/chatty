@@ -19,6 +19,8 @@ export interface AccountInfo extends Account {
 export interface AppInfo {
   theme: Theme;
   notifications: boolean;
+  /** Ton bei Benachrichtigungen, nach Einstellung oder Vorgabe der Optik. */
+  sound: boolean;
   google_configured: boolean;
   google_client_id: string;
   accounts: AccountInfo[];
@@ -36,7 +38,18 @@ export interface PickedFile {
   name: string;
 }
 
-export type Theme = "mattermost" | "slack" | "ehex" | "mirc" | "dos";
+export type Theme = "mattermost" | "slack" | "ehex" | "mirc" | "dos" | "seequ";
+
+/** Online-Status (Kern: `model::Presence`); Beschriftung und Menü in presence.ts. */
+export type Presence =
+  | "online"
+  | "available_to_chat"
+  | "away"
+  | "not_available"
+  | "busy"
+  | "do_not_disturb"
+  | "invisible"
+  | "offline";
 
 export interface Space {
   id: string;
@@ -50,6 +63,8 @@ export interface Space {
   muted: boolean;
   /** Status-Emoji des DM-Partners: Unicode oder ":name:" (eigenes Server-Emoji). */
   status_emoji?: string | null;
+  /** Online-Status des DM-Partners, nur Mattermost. */
+  presence?: Presence | null;
   /** Kanal-Header (Markdown), nur Mattermost. */
   header?: string;
 }
@@ -94,17 +109,21 @@ export type BackendEvent =
   | { type: "message_updated"; message: Message }
   | { type: "message_deleted"; space_id: string; message_id: string }
   | { type: "space_updated"; space: Space }
+  | { type: "own_presence"; presence: Presence }
   | { type: "status"; online: boolean; detail: string | null };
 
 export interface ChatEvent {
   account: string;
   event: BackendEvent;
+  /** Ton spielen (DM oder Erwähnung, Space nicht sichtbar, Ton an); welcher, steht in sound.ts. */
+  sound: boolean;
 }
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
   setSettings: (theme: string, notifications: boolean) =>
     invoke<void>("set_settings", { theme, notifications }),
+  setSound: (on: boolean) => invoke<void>("set_sound", { on }),
   setGoogleClient: (clientId: string, clientSecret: string) =>
     invoke<void>("set_google_client", { clientId, clientSecret }),
   addGoogle: (accountId?: string) => invoke<Account>("add_google_account", { accountId }),
@@ -139,6 +158,9 @@ export const api = {
     invoke<boolean>("save_attachment", { account, attachment }),
   search: (account: string, query: string) => invoke<Message[]>("search", { account, query }),
   markRead: (account: string, space: string) => invoke<void>("mark_read", { account, space }),
+  ownPresence: (account: string) => invoke<Presence | null>("own_presence", { account }),
+  setPresence: (account: string, presence: Presence, text: string) =>
+    invoke<void>("set_presence", { account, presence, text }),
   setActive: (account: string, space: string | null) => invoke<void>("set_active", { account, space }),
   openWindow: (account: string, space: string, title: string) =>
     invoke<void>("open_space_window", { account, space, title }),

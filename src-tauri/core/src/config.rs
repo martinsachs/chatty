@@ -40,6 +40,8 @@ pub struct Config {
     pub theme: String,
     /// OS-Benachrichtigungen bei DMs und Erwähnungen.
     pub notifications: bool,
+    /// Ton bei DMs und Erwähnungen; fehlt der Eintrag, gilt die Vorgabe der Optik (`app::SOUND_THEMES`).
+    pub sound: Option<bool>,
     pub google: Option<GoogleConfig>,
     pub poll: PollConfig,
 }
@@ -49,6 +51,7 @@ impl Default for Config {
         Self {
             theme: "mattermost".into(),
             notifications: true,
+            sound: None,
             google: None,
             poll: PollConfig::default(),
         }

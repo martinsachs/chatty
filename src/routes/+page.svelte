@@ -3,12 +3,13 @@
   import { chat } from "$lib/chat.svelte";
   import ChannelView from "$lib/components/ChannelView.svelte";
   import Rhs from "$lib/components/Rhs.svelte";
-  import Settings from "$lib/components/Settings.svelte";
+  import Settings, { type SettingsTab } from "$lib/components/Settings.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Toasts from "$lib/components/Toasts.svelte";
   import { checkForUpdate } from "$lib/update";
 
   let settingsOpen = $state(false);
+  let settingsTab = $state<SettingsTab | undefined>();
 
   $effect(() => {
     document.documentElement.dataset.theme = chat.theme;
@@ -31,7 +32,12 @@
 
 <main class:popout={chat.popout}>
   {#if !chat.popout}
-    <Sidebar onSettings={() => (settingsOpen = true)} />
+    <Sidebar
+      onSettings={(tab) => {
+        settingsTab = tab;
+        settingsOpen = true;
+      }}
+    />
   {/if}
   {#if chat.space}
     <ChannelView />
@@ -45,7 +51,7 @@
 </main>
 
 {#if settingsOpen}
-  <Settings onClose={() => (settingsOpen = false)} />
+  <Settings initialTab={settingsTab} onClose={() => (settingsOpen = false)} />
 {/if}
 <Toasts />
 

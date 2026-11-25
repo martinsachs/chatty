@@ -254,6 +254,7 @@ mod tests {
             favorite: false,
             muted: false,
             status_emoji: None,
+            presence: None,
             header: String::new(),
         };
         st.put_spaces("a", std::slice::from_ref(&s)).unwrap();

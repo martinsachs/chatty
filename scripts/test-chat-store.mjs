@@ -14,8 +14,12 @@ const ts = readFileSync(`${root}src/lib/chat.svelte.ts`, "utf8");
 let code = compileModule(stripTypeScriptTypes(ts, { mode: "strip" }), { generate: "client", filename: "chat.svelte.js" }).js.code;
 code = code
   .replace(/import \{ listen \} from "@tauri-apps\/api\/event";/, "const listen = globalThis.__listen;")
-  .replace(/import \{[^}]*\} from "\.\/api";/, "const { api, emojiSrc } = globalThis.__api;");
+  .replace(/import \{[^}]*\} from "\.\/api";/, "const { api, emojiSrc } = globalThis.__api;")
+  .replace(/import \{ playNotificationSound \} from "\.\/sound";/, "const playNotificationSound = (theme) => globalThis.__sounds.push(theme);")
+  .replace(/from "\.\/presence";/, 'from "./presence.mjs";');
 writeFileSync(`${outDir}/chat.mjs`, code);
+const presenceTs = readFileSync(`${root}src/lib/presence.ts`, "utf8");
+writeFileSync(`${outDir}/presence.mjs`, stripTypeScriptTypes(presenceTs, { mode: "strip" }));
 globalThis.document = { hasFocus: () => true };
 const calls = [];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -24,6 +28,7 @@ const msg = (space, n) => ({ id: `${space}-${n}`, space_id: space, created: n, i
 let delay = { A: 30, B: 5 };
 let server = { A: [msg("A", 1), msg("A", 2)], B: [msg("B", 1)] };
 globalThis.__listen = async () => () => {};
+globalThis.__sounds = [];
 globalThis.__api = {
   emojiSrc: () => "",
   api: {
@@ -33,6 +38,8 @@ globalThis.__api = {
     cachedSpaces: async () => [],
     listSpaces: async () => [{ id: "A" }, { id: "B" }],
     customEmojis: async () => [],
+    ownPresence: async () => "online",
+    setPresence: async (...args) => calls.push(["setPresence", ...args]),
     listMessages: async (a, s, cursor) => {
       await wait(delay[s] ?? 1);
       if (cursor) return { messages: [msg(s, -1)], next_cursor: null };
@@ -93,6 +100,26 @@ assert.equal(chat.cursor, "B-2");
 chat.accounts = [{ id: "acc", online: true, label: "x", kind: "google" }];
 chat.trimToWindow(1);
 assert.equal(chat.messages.length, 3, "Google: nicht kürzen");
+
+// Ton: entscheidet der Kern (`sound`), Ton je Optik; nur das Hauptfenster spielt.
+const created = (sound) => ({ account: "acc", event: { type: "message_created", message: msg("A", 200) }, sound });
+chat.theme = "seequ";
+chat["onEvent"]?.call(chat, created(true));
+chat["onEvent"]?.call(chat, created(false));
+chat.popout = true;
+chat["onEvent"]?.call(chat, created(true));
+chat.popout = false;
+chat.theme = "mattermost";
+chat["onEvent"]?.call(chat, created(true));
+assert.deepEqual(globalThis.__sounds, ["seequ", "mattermost"], "Ton nur mit sound, nur Hauptfenster, Optik wird übergeben");
+
+// Online-Status: eigener Status per Ereignis, Auswahl schickt die Beschriftung als Status-Text.
+chat["onEvent"]?.call(chat, { account: "acc", event: { type: "own_presence", presence: "away" }, sound: false });
+assert.equal(chat.ownPresence.acc, "away", "own_presence setzt eigenen Status");
+calls.length = 0;
+await chat.setPresence("acc", "busy");
+assert.equal(chat.ownPresence.acc, "busy", "Auswahl sofort sichtbar");
+assert.deepEqual(calls, [["setPresence", "acc", "busy", "Beschäftigt"]], "Status-Text = Beschriftung");
 
 // K5: Kontowechsel meldet alten Space inaktiv.
 calls.length = 0;
