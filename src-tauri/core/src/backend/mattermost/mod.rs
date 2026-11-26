@@ -360,7 +360,10 @@ impl MattermostBackend {
     async fn ensure_statuses(&self, ids: &[&str]) -> Result<()> {
         let missing: Vec<&str> = {
             let cache = lock(&self.statuses);
-            ids.iter().copied().filter(|id| !cache.contains_key(*id)).collect()
+            ids.iter()
+                .copied()
+                .filter(|id| !cache.contains_key(*id))
+                .collect()
         };
         if missing.is_empty() {
             return Ok(());
@@ -829,7 +832,8 @@ impl ChatBackend for MattermostBackend {
         let (status, emoji) = api::mattermost_status(presence);
         let path = format!("/users/{}/status", self.me.id);
         let body = json!({ "user_id": self.me.id, "status": status });
-        self.send_req(self.req(Method::PUT, &path).json(&body)).await?;
+        self.send_req(self.req(Method::PUT, &path).json(&body))
+            .await?;
         // Frisch vom Server: ein anderer Client kann den Status-Text inzwischen geändert haben.
         let me: ApiUser = self.get("/users/me").await?;
         let current = me.status_emoji_name(chrono::Utc::now().timestamp_millis());

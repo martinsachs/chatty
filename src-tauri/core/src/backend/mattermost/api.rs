@@ -26,7 +26,8 @@ pub struct UserProps {
 impl ApiUser {
     /// Status-Emoji als Unicode bzw. ":name:", sofern gesetzt und nicht abgelaufen.
     pub fn status_emoji(&self, now_ms: i64) -> Option<String> {
-        self.status_emoji_name(now_ms).map(|name| emoji::to_unicode(&name))
+        self.status_emoji_name(now_ms)
+            .map(|name| emoji::to_unicode(&name))
     }
 
     /// Emoji-Name des Status-Texts (z. B. "palm_tree"), sofern gesetzt und nicht abgelaufen.
@@ -375,7 +376,11 @@ mod tests {
             let (status, emoji) = mattermost_status(chosen);
             assert_eq!(presence(status, emoji), chosen, "{chosen:?}");
         }
-        assert_eq!(presence("online", Some("palm_tree")), Presence::Online, "fremder Status-Text");
+        assert_eq!(
+            presence("online", Some("palm_tree")),
+            Presence::Online,
+            "fremder Status-Text"
+        );
         assert_eq!(mattermost_status(Presence::Invisible), ("offline", None));
     }
 

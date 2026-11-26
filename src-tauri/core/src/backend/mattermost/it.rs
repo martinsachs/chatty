@@ -306,7 +306,12 @@ async fn scenario() -> Result<()> {
     // Eigener Status: unsichtbar = offline von Hand, gemeldet als eigenes Ereignis.
     me.set_presence(Presence::Invisible, "").await?;
     wait_for(&mut rx, "eigener Status unsichtbar", |e| {
-        matches!(e, BackendEvent::OwnPresence { presence: Presence::Invisible })
+        matches!(
+            e,
+            BackendEvent::OwnPresence {
+                presence: Presence::Invisible
+            }
+        )
     })
     .await?;
     check(

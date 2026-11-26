@@ -19,7 +19,8 @@ use crate::{
 };
 
 /// Anleitung für den OAuth-Client (Tauri: Kurzfassung mit Direktlinks in `GoogleSetupHelp.svelte`).
-const GOOGLE_SETUP_GUIDE: &str = "https://github.com/martinsachs/chatty/blob/main/konzept/google-setup.md";
+const GOOGLE_SETUP_GUIDE: &str =
+    "https://github.com/martinsachs/chatty/blob/main/konzept/google-setup.md";
 
 pub fn view(s: &State) -> Element<'_, Message> {
     let main: Element<'_, Message> = if s.settings.is_some() {

@@ -92,7 +92,8 @@ pub struct Alert {
 
 /// Ton an nach Einstellung, sonst nach Vorgabe der Optik.
 fn sound_on(cfg: &Config) -> bool {
-    cfg.sound.unwrap_or_else(|| SOUND_THEMES.contains(&cfg.theme.as_str()))
+    cfg.sound
+        .unwrap_or_else(|| SOUND_THEMES.contains(&cfg.theme.as_str()))
 }
 
 fn notification(m: &Message, space: Option<&Space>) -> Notification {
@@ -695,7 +696,10 @@ impl App {
     }
 
     pub async fn set_presence(&self, account: &str, presence: Presence, text: &str) -> Result<()> {
-        self.backend(account).await?.set_presence(presence, text).await
+        self.backend(account)
+            .await?
+            .set_presence(presence, text)
+            .await
     }
 
     // ---------- Fenster-Zustand ----------
@@ -830,11 +834,17 @@ mod tests {
         let mut ev = BackendEvent::MessageCreated {
             message: msg("s1", true),
         };
-        assert!(app.handle_event("a", &mut ev).notification.is_some(), "Erwähnung");
+        assert!(
+            app.handle_event("a", &mut ev).notification.is_some(),
+            "Erwähnung"
+        );
         app.set_active("a", Some("s1".into())).await;
         assert_eq!(app.handle_event("a", &mut ev), Alert::default(), "sichtbar");
         app.set_focused(false);
-        assert!(app.handle_event("a", &mut ev).notification.is_some(), "ohne Fokus");
+        assert!(
+            app.handle_event("a", &mut ev).notification.is_some(),
+            "ohne Fokus"
+        );
         let mut plain = BackendEvent::MessageCreated {
             message: msg("s2", false),
         };
@@ -855,9 +865,15 @@ mod tests {
         app.set_settings("seequ".into(), false).unwrap();
         let alert = app.handle_event("a", &mut ev);
         assert!(alert.sound, "seequ: an");
-        assert!(alert.notification.is_none(), "Ton auch ohne OS-Benachrichtigung");
+        assert!(
+            alert.notification.is_none(),
+            "Ton auch ohne OS-Benachrichtigung"
+        );
         app.set_sound(false).unwrap();
-        assert!(!app.handle_event("a", &mut ev).sound, "Einstellung vor Optik");
+        assert!(
+            !app.handle_event("a", &mut ev).sound,
+            "Einstellung vor Optik"
+        );
         app.set_settings("mattermost".into(), true).unwrap();
         app.set_sound(true).unwrap();
         assert!(app.handle_event("a", &mut ev).sound, "Ton für alle Optiken");
