@@ -1,14 +1,12 @@
 # Änderungen
 
-## 0.2.5 – 2026-11-25
+## 0.2.6 – 2026-11-26
 
 **Neu** (beide Varianten)
-- Text kopieren: im Verlauf mit der Maus markieren und Strg+C, ⎘ an jeder Nachricht kopiert sie ganz.
-  Native Variante markiert je Absatz; „Als Text“ im Kanalkopf (Strg+Umschalt+A) zeigt den Verlauf als einen
-  markierbaren Text.
-- Bilder aus der Zwischenablage mit Strg+V als Anhang einfügen, Vorschaubild über dem Eingabefeld (auch für
-  per 📎 gewählte Bilder).
-- 👁 zeigt den getippten Text formatiert vor dem Senden.
+- Native Variante: Text direkt im Verlauf mit der Maus markieren (je Absatz), Strg+C kopiert. „Als Text“ im
+  Kanalkopf (Strg+Umschalt+A) zeigt den ganzen Verlauf als einen markierbaren Text, „Alles kopieren“.
+- Tauri: Ziehen auf einem Link markiert Text, statt den Link zu ziehen; eine Markierung, die auf einem Link
+  endet, öffnet ihn nicht mehr.
 
 **Neu** (Tauri-Variante; native nur Farben der Optik und Link auf die Google-Anleitung)
 - Optik „seequ“ im Stil eines Messengers von 2001.
@@ -16,6 +14,15 @@
 - Ton bei Direktnachrichten und Erwähnungen, abschaltbar (Vorgabe: nur in seequ an).
 - Google-Anmeldung: ⓘ mit Kurzanleitung und Direktlinks in die Cloud Console; Passwort und Client-Secret
   mit Augen-Knopf anzeigbar; Zahnrad unten in der Kontoleiste öffnet die Einstellungen.
+
+## 0.2.5 – 2026-11-25
+
+**Neu** (beide Varianten)
+- Text kopieren: ⎘ an jeder Nachricht. Native Variante: Nachricht zum Markieren öffnen, Strg+C kopiert die
+  Auswahl; Tauri markiert direkt im Verlauf.
+- Bilder aus der Zwischenablage mit Strg+V als Anhang einfügen, Vorschaubild über dem Eingabefeld (auch für
+  per 📎 gewählte Bilder).
+- 👁 zeigt den getippten Text formatiert vor dem Senden.
 
 ## 0.2.4 – 2026-11-24
 
