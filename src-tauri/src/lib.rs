@@ -27,8 +27,6 @@ pub fn run() {
             app::set_settings,
             app::set_sound,
             app::set_google_client,
-            app::set_gif_config,
-            app::search_gifs,
             app::add_google_account,
             app::add_mattermost_account,
             app::remove_account,

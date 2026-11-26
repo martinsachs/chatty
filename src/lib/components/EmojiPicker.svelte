@@ -8,7 +8,19 @@
   import { api } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
 
-  let { onPick, onClose }: { onPick: (emoji: string) => void; onClose: () => void } = $props();
+  let {
+    onPick,
+    onClose,
+    quick = [],
+    placement = "above",
+  }: {
+    onPick: (emoji: string) => void;
+    onClose: () => void;
+    /** Feste Auswahl oben (Reaktionen: die häufigsten). */
+    quick?: readonly string[];
+    /** Über dem Eingabefeld oder unter dem Knopf einer Nachricht. */
+    placement?: "above" | "below";
+  } = $props();
 
   const RECENT_KEY = "recentEmojis";
   const RECENT_MAX = 16;
@@ -51,13 +63,21 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onClose()} />
+<svelte:window onclick={onClose} onkeydown={(e) => e.key === "Escape" && onClose()} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="emoji-picker" role="dialog" aria-label="Emoji auswählen" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+<div class="emoji-picker {placement}" role="dialog" aria-label="Emoji auswählen" tabindex="-1" onclick={(e) => e.stopPropagation()}>
   <!-- svelte-ignore a11y_autofocus -->
   <input class="search" placeholder="Emoji suchen, z. B. smile" bind:value={query} autofocus />
   <div class="scroll">
+    {#if !needle && quick.length}
+      <h4>Häufig</h4>
+      <div class="grid">
+        {#each quick as emoji (emoji)}
+          <button type="button" onclick={() => pick(emoji)}>{emoji}</button>
+        {/each}
+      </div>
+    {/if}
     {#if !needle && recent.length}
       <h4>Zuletzt</h4>
       <div class="grid">
@@ -103,6 +123,13 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  }
+  .emoji-picker.below {
+    top: 18px;
+    right: 16px;
+    bottom: auto;
+    left: auto;
+    margin-bottom: 0;
   }
   .search {
     width: 100%;

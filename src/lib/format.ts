@@ -25,8 +25,7 @@ export function emojiOnly(text: string, emojiUrl?: EmojiUrl): boolean {
 export type EmojiUrl = (name: string) => string | null;
 
 /** Markdown-Teilmenge (Mattermost/Slack/Google): ```code```, `code`, **fett**, *fett*, _kursiv_, ~durch~, Links, @Erwähnungen,
- * eigene Server-Emojis `:name:` als Bild (Unicode-Kurzcodes ersetzt schon das Backend). Markdown-Bilder (z. B. GIFs)
- * erscheinen als Link mit 🖼, weil die CSP keine fremden Bildquellen lädt. */
+ * eigene Server-Emojis `:name:` als Bild (Unicode-Kurzcodes ersetzt schon das Backend). */
 export function formatText(text: string, emojiUrl?: EmojiUrl): string {
   const blocks: string[] = [];
   const keep = (html: string) => {
@@ -38,9 +37,7 @@ export function formatText(text: string, emojiUrl?: EmojiUrl): string {
   let s = escapeHtml(text.replace(/\u0000/g, ""))
     .replace(/```(?:[a-z]*\n)?([\s\S]*?)\n?```\n?/g, (_, code) => keep(`<pre><code>${code}</code></pre>`))
     .replace(/`([^`\n]+)`/g, (_, code) => keep(`<code>${code}</code>`))
-    .replace(/(!?)\[([^\]\n]+)\]\((https?:\/\/[^\s)\u0000]+)\)/g, (_, image, label, url) =>
-      keep(`<a href="${url}" title="${url}" target="_blank" rel="noreferrer">${image ? "🖼 " : ""}${label}</a>`),
-    );
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)\u0000]+)\)/g, (_, label, url) => keep(`<a href="${url}" title="${url}" target="_blank" rel="noreferrer">${label}</a>`));
   if (emojiUrl) {
     s = s.replace(/:([a-z0-9_+-]+):/g, (all, name: string) => {
       const url = emojiUrl(name);

@@ -3,6 +3,7 @@
   import { api, avatarSrc, previewSrc, type Attachment, type Message } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
   import { colorFor, emojiOnly, formatText, initials, QUICK_EMOJI, size, time } from "$lib/format";
+  import EmojiPicker from "./EmojiPicker.svelte";
 
   let {
     message: m,
@@ -137,7 +138,14 @@
   </div>
   {#if !editing}
     <div class="actions">
-      <button class="icon-btn" title="Reaktion" onclick={() => (picker = !picker)}>☺</button>
+      <button
+        class="icon-btn"
+        title="Reaktion"
+        onclick={(e) => {
+          e.stopPropagation();
+          picker = !picker;
+        }}>🙂</button
+      >
       <button class="icon-btn" title="Text kopieren (Teile: markieren, Strg+C)" onclick={copy}>⎘</button>
       {#if !inThread && m.thread_id}
         <button class="icon-btn" title="Antworten" onclick={() => chat.openThread(m)}>↩</button>
@@ -149,16 +157,15 @@
     </div>
   {/if}
   {#if picker}
-    <div class="picker">
-      {#each QUICK_EMOJI as e (e)}
-        <button
-          onclick={() => {
-            picker = false;
-            chat.toggleReaction(m, e);
-          }}>{e}</button
-        >
-      {/each}
-    </div>
+    <EmojiPicker
+      quick={QUICK_EMOJI}
+      placement="below"
+      onPick={(e) => {
+        picker = false;
+        chat.toggleReaction(m, e);
+      }}
+      onClose={() => (picker = false)}
+    />
   {/if}
 </div>
 
@@ -340,28 +347,5 @@
   }
   .msg:hover .actions {
     display: flex;
-  }
-  .picker {
-    position: absolute;
-    top: 18px;
-    right: 16px;
-    z-index: 5;
-    display: grid;
-    grid-template-columns: repeat(6, 36px);
-    background: var(--center-bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    padding: 4px;
-  }
-  .picker button {
-    border: none;
-    background: none;
-    font-size: 22px;
-    padding: 4px;
-    border-radius: 4px;
-  }
-  .picker button:hover {
-    background: var(--hover);
   }
 </style>

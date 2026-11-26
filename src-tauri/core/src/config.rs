@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::gif::GifConfig;
 use crate::model::Account;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -44,8 +43,6 @@ pub struct Config {
     /// Ton bei DMs und Erwähnungen; fehlt der Eintrag, gilt die Vorgabe der Optik (`app::SOUND_THEMES`).
     pub sound: Option<bool>,
     pub google: Option<GoogleConfig>,
-    /// GIF-Suche (GIPHY-kompatible API); fehlt der Abschnitt, ist sie aus.
-    pub gif: Option<GifConfig>,
     pub poll: PollConfig,
 }
 
@@ -56,7 +53,6 @@ impl Default for Config {
             notifications: true,
             sound: None,
             google: None,
-            gif: None,
             poll: PollConfig::default(),
         }
     }

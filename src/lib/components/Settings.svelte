@@ -47,34 +47,6 @@
     }
   }
 
-  // GIF-Anbieter (opt-in); Schlüssel wird nie zurückgelesen
-  let gifApiUrl = $state(chat.gifApiUrl);
-  let gifApiKey = $state("");
-
-  async function applyGif(apiUrl: string, apiKey: string) {
-    busy = true;
-    error = "";
-    try {
-      await api.setGifConfig(apiUrl, apiKey);
-      gifApiKey = "";
-      await chat.refreshInfo();
-    } catch (e) {
-      error = String(e);
-    } finally {
-      busy = false;
-    }
-  }
-
-  function saveGif(e: SubmitEvent) {
-    e.preventDefault();
-    applyGif(gifApiUrl, gifApiKey);
-  }
-
-  function disableGif() {
-    gifApiUrl = "";
-    applyGif("", "");
-  }
-
   async function done(promise: Promise<unknown>) {
     busy = true;
     error = "";
@@ -213,29 +185,6 @@
           <input type="checkbox" checked={chat.sound} onchange={(e) => chat.saveSound(e.currentTarget.checked)} />
           Ton bei Direktnachrichten und Erwähnungen
         </label>
-
-        <h3>GIF-Suche (optional)</h3>
-        <p class="muted">
-          Aus, solange kein Anbieter eingetragen ist. Suchbegriffe und deine IP-Adresse gehen an den Anbieter; nur
-          einschalten, wenn deine Organisation das erlaubt (Auftragsverarbeitung). Geeignet sind GIPHY-kompatible APIs,
-          z. B. GIPHY oder heypster.
-        </p>
-        <form onsubmit={saveGif}>
-          <label class="field"
-            >API-URL<input bind:value={gifApiUrl} required placeholder="https://api.giphy.com/v1/gifs" /></label
-          >
-          <label class="field"
-            >API-Schlüssel{#if chat.gifProvider}<small class="muted"> (leer = unverändert)</small>{/if}<input
-              type="password"
-              bind:value={gifApiKey}
-              autocomplete="off"
-            /></label
-          >
-          <button class="btn" disabled={busy}>Speichern</button>
-          {#if chat.gifProvider}
-            <button type="button" class="btn secondary" disabled={busy} onclick={disableGif}>Ausschalten</button>
-          {/if}
-        </form>
       {/if}
       {#if busy}<p class="muted">Bitte warten … (Google: Anmeldung im Browser abschließen)</p>{/if}
       {#if error}<p class="error">{error}</p>{/if}

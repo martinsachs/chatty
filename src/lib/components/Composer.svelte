@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { api, pickedSrc, type Gif, type PickedFile } from "$lib/api";
+  import { api, pickedSrc, type PickedFile } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
   import { formatText } from "$lib/format";
   import EmojiPicker from "./EmojiPicker.svelte";
-  import GifPicker from "./GifPicker.svelte";
 
   let {
     placeholder,
@@ -16,7 +15,6 @@
   let sending = $state(false);
   let preview = $state(false);
   let emojiOpen = $state(false);
-  let gifOpen = $state(false);
   // Dateien ohne Vorschaubild (kein Bild, zu groß): nur Name zeigen.
   let noThumb = $state<Record<number, boolean>>({});
   let area: HTMLTextAreaElement;
@@ -81,38 +79,15 @@
     });
   }
 
-  // Mattermost zeigt Markdown-Bilder im Verlauf; Google Chat kennt keine, dort nur der Link.
-  function gifMessage(gif: Gif) {
-    if (chat.currentAccount?.kind !== "mattermost") return gif.url;
-    const title = gif.title.replace(/[[\]]/g, "").trim() || "GIF";
-    return `![${title}](${gif.url.replaceAll(")", "%29")})`;
-  }
-
-  async function sendGif(gif: Gif) {
-    gifOpen = false;
-    await chat.send(gifMessage(gif), [], thread);
-    area?.focus();
-  }
-
   function grow() {
     area.style.height = "auto";
     area.style.height = Math.min(area.scrollHeight, 240) + "px";
   }
 </script>
 
-<svelte:window
-  onclick={() => {
-    emojiOpen = false;
-    gifOpen = false;
-  }}
-/>
-
 <div class="composer">
   {#if emojiOpen}
     <EmojiPicker onPick={insertEmoji} onClose={() => (emojiOpen = false)} />
-  {/if}
-  {#if gifOpen}
-    <GifPicker onPick={sendGif} onClose={() => (gifOpen = false)} />
   {/if}
   {#if files.length}
     <div class="chips">
@@ -150,23 +125,9 @@
       aria-expanded={emojiOpen}
       onclick={(e) => {
         e.stopPropagation();
-        gifOpen = false;
         emojiOpen = !emojiOpen;
-      }}>☺</button
+      }}>🙂</button
     >
-    {#if chat.gifProvider}
-      <button
-        class="icon-btn gif"
-        class:on={gifOpen}
-        title="GIF senden"
-        aria-expanded={gifOpen}
-        onclick={(e) => {
-          e.stopPropagation();
-          emojiOpen = false;
-          gifOpen = !gifOpen;
-        }}>GIF</button
-      >
-    {/if}
     <button class="icon-btn" title="Datei anhängen (oder Bild mit Strg+V einfügen)" onclick={pick}>📎</button>
     <button class="icon-btn" class:on={preview} title="Vorschau der Formatierung" onclick={() => (preview = !preview)}
       >👁</button
@@ -234,10 +195,6 @@
   }
   .on {
     background: var(--hover);
-  }
-  .gif {
-    font-size: 11px;
-    font-weight: 700;
   }
   .chip {
     background: var(--hover);

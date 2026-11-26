@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex};
 
 use chatty_core::app::file_name;
 use chatty_core::error::{Error, Result};
-use chatty_core::gif::Gif;
 use chatty_core::model::{Account, Attachment, BackendEvent, Message, Page, Presence, Space};
 use chatty_core::{App, AppInfo};
 use serde::Serialize;
@@ -157,16 +156,6 @@ pub fn set_google_client(
     client_secret: String,
 ) -> Cmd<()> {
     state.app.set_google_client(&client_id, &client_secret)
-}
-
-#[tauri::command]
-pub fn set_gif_config(state: State<'_, AppState>, api_url: String, api_key: String) -> Cmd<()> {
-    state.app.set_gif_config(&api_url, &api_key)
-}
-
-#[tauri::command]
-pub async fn search_gifs(state: State<'_, AppState>, query: String) -> Cmd<Vec<Gif>> {
-    state.app.search_gifs(&query).await
 }
 
 #[tauri::command]

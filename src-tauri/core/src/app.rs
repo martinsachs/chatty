@@ -14,7 +14,6 @@ use crate::backend::mattermost::MattermostBackend;
 use crate::backend::{Avatar, ChatBackend, EventSender, MAX_PREVIEW};
 use crate::config::{self, Config, GoogleConfig};
 use crate::error::{Error, Result};
-use crate::gif::{Gif, GifConfig};
 use crate::model::{
     Account, Attachment, BackendEvent, BackendKind, Message, Page, Presence, Space, SpaceKind,
     UploadFile,
@@ -65,10 +64,6 @@ pub struct AppInfo {
     pub google_configured: bool,
     /// Client-ID zum Vorbelegen des Formulars; das Secret geht nicht an die Oberfläche.
     pub google_client_id: String,
-    /// Host des GIF-Anbieters (Hinweis in der Suche); None = GIF-Suche aus.
-    pub gif_provider: Option<String>,
-    /// API-URL zum Vorbelegen des Formulars; der Schlüssel geht nicht an die Oberfläche.
-    pub gif_api_url: String,
     pub accounts: Vec<AccountInfo>,
 }
 
@@ -368,12 +363,6 @@ impl App {
             notifications: cfg.notifications,
             google_configured: cfg.google.as_ref().is_some_and(|g| !g.client_id.is_empty()),
             google_client_id: cfg.google.map(|g| g.client_id).unwrap_or_default(),
-            gif_provider: cfg
-                .gif
-                .as_ref()
-                .and_then(|g| url::Url::parse(&g.api_url).ok())
-                .and_then(|u| u.host_str().map(str::to_string)),
-            gif_api_url: cfg.gif.map(|g| g.api_url).unwrap_or_default(),
             accounts: self
                 .accounts()
                 .into_iter()
@@ -393,40 +382,6 @@ impl App {
         cfg.theme = theme;
         cfg.notifications = notifications;
         config::save_config(&self.cfg_dir, &cfg)
-    }
-
-    /// GIF-Anbieter setzen und in `chatty.toml` speichern. Leerer Schlüssel behält den bisherigen,
-    /// leere URL schaltet die GIF-Suche aus.
-    pub fn set_gif_config(&self, api_url: &str, api_key: &str) -> Result<()> {
-        let (api_url, api_key) = (api_url.trim(), api_key.trim());
-        let mut cfg = lock(&self.config);
-        cfg.gif = if api_url.is_empty() {
-            None
-        } else {
-            crate::gif::require_https(api_url)?;
-            let old = cfg.gif.take().map(|g| g.api_key).unwrap_or_default();
-            let api_key = if api_key.is_empty() {
-                old
-            } else {
-                api_key.into()
-            };
-            if api_key.is_empty() {
-                return Err(Error::other("API-Schlüssel des GIF-Anbieters fehlt"));
-            }
-            Some(GifConfig {
-                api_url: api_url.into(),
-                api_key,
-            })
-        };
-        config::save_config(&self.cfg_dir, &cfg)
-    }
-
-    pub async fn search_gifs(&self, query: &str) -> Result<Vec<Gif>> {
-        let gif = self
-            .config()
-            .gif
-            .ok_or_else(|| Error::other("GIF-Suche ist nicht eingerichtet"))?;
-        crate::gif::search(&gif, query).await
     }
 
     /// Ton bei Benachrichtigungen für alle Optiken setzen; ersetzt die Vorgabe der Optik.

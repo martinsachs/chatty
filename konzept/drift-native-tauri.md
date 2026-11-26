@@ -39,7 +39,6 @@ offen, mit Grund).
 | Bild per Strg+V als Anhang mit Vorschaubild, auch für gewählte Bilder; Text in der Zwischenablage hat Vorrang (Auftrag 2026-11-25) | – | gleich (beide; native liest Bilder über `arboard`) |
 | Formatierte Vorschau des Eingabetexts (👁) (Auftrag 2026-11-25) | – | gleich (beide; nur Hauptfeld, nicht im Thread) |
 | Emoji-Auswahl (☺) im Eingabefeld: zuletzt benutzte, Server-Emojis, alle Unicode-Emojis mit Suche nach Kurznamen (Auftrag 2026-11-25) | – | Abweichung: native ohne Auswahl (Kurzcodes wie `:smile:` gehen) |
-| GIF-Suche (opt-in, `[gif]` in `chatty.toml`, GIPHY-kompatible API): Vorschauen lädt der Kern als data:-URL, Versand als Link bzw. Markdown-Bild (Auftrag 2026-11-25) | – | Abweichung: native ohne GIF-Suche |
 | Emojis im Text 1,3× Schriftgröße, Nachricht nur aus Emojis groß; native setzt Farb-Emoji-Schrift ausdrücklich (sonst Schwarz-Weiß-Glyphen aus DejaVu Sans) (Auftrag 2026-11-24) | – | gleich (beide) |
 | Tagestrenner „Heute“, „Gestern“, Datum | fehlte | angeglichen |
 | Gruppierung Folgenachrichten (5 min, gleicher Tag), Uhrzeit beim Überfahren | ohne Tagesgrenze, ohne Uhrzeit | angeglichen |
