@@ -139,6 +139,16 @@ pub trait ChatBackend: Send + Sync {
         Ok(None)
     }
 
+    /// Eigenes Server-Emoji anlegen; `image` kommt aus [`crate::emoji_image::prepare`].
+    async fn create_emoji(&self, _name: &str, _image: Avatar) -> Result<()> {
+        Err(crate::error::Error::other("Vom Backend nicht unterstützt"))
+    }
+
+    /// Warum `name` als neues Server-Emoji nicht geht (ohne Prüfung auf belegte eigene Namen).
+    fn emoji_name_problem(&self, _name: &str) -> Option<&'static str> {
+        Some("Vom Backend nicht unterstützt")
+    }
+
     /// Serverseitige Volltextsuche über alle Spaces des Kontos.
     async fn search(&self, query: &str) -> Result<Vec<Message>>;
 

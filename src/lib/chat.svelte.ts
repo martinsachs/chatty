@@ -42,6 +42,8 @@ class Chat {
   popout = $state(false);
   /** Namen eigener Server-Emojis je Konto. */
   customEmojis = $state.raw<Record<string, ReadonlySet<string>>>({});
+  /** Dialog „Emoji hinzufügen“ offen (aus dem Emoji-Picker). */
+  addEmojiOpen = $state(false);
   private toastSeq = 0;
   private countedReplies = new Set<string>();
   /** Zählt Ladevorgänge, die den Verlauf ersetzen; ältere Antworten werden verworfen. */
@@ -54,6 +56,12 @@ class Chat {
   /** Bild-URL für ":name:", wenn es ein eigenes Server-Emoji des Kontos ist. */
   emojiUrl(account: string | null, name: string): string | null {
     return account && this.customEmojis[account]?.has(name) ? emojiSrc(account, name) : null;
+  }
+
+  addCustomEmoji(account: string, name: string) {
+    const names = new Set(this.customEmojis[account]);
+    names.add(name);
+    this.customEmojis = { ...this.customEmojis, [account]: names };
   }
 
   get currentAccount(): AccountInfo | undefined {
@@ -376,6 +384,9 @@ class Chat {
         break;
       case "own_presence":
         this.ownPresence = { ...this.ownPresence, [account]: event.presence };
+        break;
+      case "emoji_added":
+        this.addCustomEmoji(account, event.name);
         break;
       case "space_updated": {
         const list = this.spaces[account] ?? [];

@@ -867,6 +867,7 @@ dependencies = [
  "chrono",
  "dirs",
  "futures-util",
+ "image",
  "keyring",
  "rand 0.10.4",
  "reqwest",

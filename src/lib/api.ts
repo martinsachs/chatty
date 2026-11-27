@@ -38,6 +38,19 @@ export interface PickedFile {
   name: string;
 }
 
+/** Vorbereitetes Bild eines neuen Server-Emojis (Kern: `EmojiDraftInfo`), Vorschau über `emojiDraftSrc`. */
+export interface EmojiDraft {
+  id: number;
+  file_name: string;
+  width: number;
+  height: number;
+  /** 1 bei Standbildern. */
+  frames: number;
+  bytes: number;
+  /** Kleiner gerechnet als das Original. */
+  resized: boolean;
+}
+
 export type Theme = "mattermost" | "slack" | "ehex" | "mirc" | "dos" | "seequ";
 
 /** Online-Status (Kern: `model::Presence`); Beschriftung und Menü in presence.ts. */
@@ -110,6 +123,7 @@ export type BackendEvent =
   | { type: "message_deleted"; space_id: string; message_id: string }
   | { type: "space_updated"; space: Space }
   | { type: "own_presence"; presence: Presence }
+  | { type: "emoji_added"; name: string }
   | { type: "status"; online: boolean; detail: string | null };
 
 export interface ChatEvent {
@@ -134,6 +148,13 @@ export const api = {
   listSpaces: (account: string) => invoke<Space[]>("list_spaces", { account }),
   browseSpaces: (account: string, query: string) => invoke<Space[]>("browse_spaces", { account, query }),
   customEmojis: (account: string) => invoke<string[]>("custom_emojis", { account }),
+  /** Unicode-Emojis als [Kurzname, Emoji] für den Emoji-Picker. */
+  emojiCatalog: () => invoke<[string, string][]>("emoji_catalog"),
+  /** Bild für ein neues Server-Emoji wählen und im Kern verkleinern; `null` = abgebrochen. */
+  pickEmojiImage: () => invoke<EmojiDraft | null>("pick_emoji_image"),
+  /** Warum der Name nicht geht; `null` = frei. */
+  emojiNameProblem: (account: string, name: string) => invoke<string | null>("emoji_name_problem", { account, name }),
+  createEmoji: (account: string, name: string, draft: number) => invoke<void>("create_emoji", { account, name, draft }),
   joinSpace: (account: string, space: string) => invoke<Space>("join_space", { account, space }),
   setSpaceFlag: (account: string, space: string, flag: { favorite?: boolean; muted?: boolean }) =>
     invoke<void>("set_space_flag", { account, space, favorite: flag.favorite ?? null, muted: flag.muted ?? null }),
@@ -174,6 +195,11 @@ export function avatarSrc(account: string, userId: string): string {
 /** URL eines eigenen Server-Emojis über dasselbe Schema. */
 export function emojiSrc(account: string, name: string): string {
   return `${convertFileSrc(account, "avatar")}/emoji/${encodeURIComponent(name)}`;
+}
+
+/** Vorschau eines neuen Server-Emojis, schon verkleinert. */
+export function emojiDraftSrc(id: number): string {
+  return `${convertFileSrc("emoji-draft", "avatar")}/${id}`;
 }
 
 /** Vorschau einer zum Senden gewählten Datei (nur Bilder, sonst 404). */

@@ -7,6 +7,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use image::codecs::gif::{GifEncoder, Repeat};
+use image::{DynamicImage, Frame, ImageFormat, Rgba, RgbaImage};
 use reqwest::Method;
 use serde_json::json;
 use tokio::sync::{mpsc, watch};
@@ -320,6 +322,54 @@ async fn scenario() -> Result<()> {
     )?;
     me.set_presence(Presence::Online, "").await?;
 
+    // Eigenes Server-Emoji: anna legt an, `me` erfährt es per WebSocket ohne Neuladen der Liste.
+    check(
+        me.custom_emojis().await?.is_empty(),
+        "noch keine eigenen Emojis",
+    )?;
+    check(
+        me.emoji_name_problem("thumbsup").is_some(),
+        "Name eines Standard-Emojis abgelehnt",
+    )?;
+    let png = crate::emoji_image::prepare(&test_image(ImageFormat::Png, 300)?)?;
+    check(png.resized && png.width == 128, "PNG auf 128 verkleinert")?;
+    anna.create_emoji("chatty_it", png.image.clone()).await?;
+    wait_for(
+        &mut rx,
+        "emoji_added",
+        |e| matches!(e, BackendEvent::EmojiAdded { name } if name == "chatty_it"),
+    )
+    .await?;
+    check(
+        me.custom_emojis().await? == ["chatty_it"],
+        "neues Emoji ohne Neustart in der Liste",
+    )?;
+    check(
+        me.custom_emoji("chatty_it").await?.is_some(),
+        "Bild des neuen Emojis ladbar",
+    )?;
+    check(
+        anna.create_emoji("chatty_it", png.image).await.is_err(),
+        "belegter Name abgelehnt",
+    )?;
+    let gif = crate::emoji_image::prepare(&test_image(ImageFormat::Gif, 256)?)?;
+    check(gif.resized && gif.frames == 3, "GIF verkleinert, 3 Bilder")?;
+    anna.create_emoji("chatty_it_gif", gif.image).await?;
+    wait_for(
+        &mut rx,
+        "emoji_added GIF",
+        |e| matches!(e, BackendEvent::EmojiAdded { name } if name == "chatty_it_gif"),
+    )
+    .await?;
+    let stored = me
+        .custom_emoji("chatty_it_gif")
+        .await?
+        .ok_or_else(|| Error::other("GIF-Emoji fehlt"))?;
+    check(
+        stored.data.starts_with(b"GIF"),
+        "Server speichert das GIF als GIF",
+    )?;
+
     // Favorit und Stumm: beim Server gespeichert, per WebSocket gemeldet, in der Liste sichtbar.
     check(
         me.set_favorite(&dev, true).await?,
@@ -532,6 +582,25 @@ async fn scenario() -> Result<()> {
         reconnect_via_proxy(&proxy).await?;
     }
     Ok(())
+}
+
+/// Quadratisches Testbild; als GIF mit drei Bildern (animiert).
+fn test_image(format: ImageFormat, side: u32) -> Result<Vec<u8>> {
+    let failed = |e: image::ImageError| Error::other(e.to_string());
+    let frame = |shade: u8| RgbaImage::from_pixel(side, side, Rgba([shade, 160, 90, 255]));
+    let mut data = Vec::new();
+    if format == ImageFormat::Gif {
+        let mut encoder = GifEncoder::new(&mut data);
+        encoder.set_repeat(Repeat::Infinite).map_err(failed)?;
+        encoder
+            .encode_frames([0, 120, 240].map(|shade| Frame::new(frame(shade))))
+            .map_err(failed)?;
+    } else {
+        DynamicImage::ImageRgba8(frame(0))
+            .write_to(&mut std::io::Cursor::new(&mut data), format)
+            .map_err(failed)?;
+    }
+    Ok(data)
 }
 
 fn docker(args: &[&str]) -> Result<()> {

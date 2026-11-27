@@ -2,6 +2,7 @@
 
 mod api;
 mod emoji;
+pub use emoji::catalog as emoji_catalog;
 mod emoji_table;
 mod ws;
 
@@ -27,8 +28,8 @@ use crate::model::{
 };
 use crate::secrets;
 use api::{
-    ApiChannel, ApiMember, ApiPost, ApiStatus, ApiTeam, ApiUser, Me, PostList, Preference,
-    UploadResponse,
+    ApiChannel, ApiEmoji, ApiMember, ApiPost, ApiStatus, ApiTeam, ApiUser, Me, PostList,
+    Preference, UploadResponse,
 };
 
 const PAGE_SIZE: usize = 50;
@@ -87,6 +88,23 @@ fn error_message(body: &str) -> String {
 }
 
 /// HTTP-Fehler auf `Error` abbilden (401 → Auth).
+/// Fehler beim Anlegen eines Emojis für Nutzer formulieren (Mattermost liefert sonst nur englische Texte).
+fn emoji_upload_error(e: Error) -> Error {
+    match e {
+        Error::Api { status: 501, .. } => {
+            Error::other("Eigene Emojis sind auf diesem Server abgeschaltet")
+        }
+        // Auch abgeschaltet oder ohne Dateispeicher: Mattermost meldet dann ebenfalls 403.
+        Error::Api { status: 403, .. } => {
+            Error::other("Der Server erlaubt diesem Konto keine eigenen Emojis")
+        }
+        Error::Api { status: 413, .. } => {
+            Error::other("Bild zu groß für den Server (höchstens 512 KiB)")
+        }
+        other => other,
+    }
+}
+
 async fn check(resp: Response) -> Result<Response> {
     let status = resp.status();
     if status.is_success() || status == StatusCode::SWITCHING_PROTOCOLS {
@@ -473,16 +491,12 @@ impl MattermostBackend {
         dm
     }
 
-    /// Eigene Server-Emojis (Name → ID), seitenweise geladen; ohne Berechtigung leer.
-    async fn custom_emoji_map(&self) -> HashMap<String, String> {
+    /// Eigene Server-Emojis (Name → ID), seitenweise geladen; abgeschaltet oder ohne Berechtigung leer.
+    /// Netz- und Serverfehler merkt der Cache nicht, damit der nächste Aufruf es erneut versucht.
+    async fn custom_emoji_map(&self) -> Result<HashMap<String, String>> {
         let mut cache = self.custom_emojis.lock().await;
         if let Some(map) = cache.as_ref() {
-            return map.clone();
-        }
-        #[derive(serde::Deserialize)]
-        struct ApiEmoji {
-            id: String,
-            name: String,
+            return Ok(map.clone());
         }
         let mut map = HashMap::new();
         for page in 0..50 {
@@ -491,7 +505,11 @@ impl MattermostBackend {
                 .await
             {
                 Ok(l) => l,
-                Err(_) => break,
+                Err(Error::Api {
+                    status: 403 | 404 | 501,
+                    ..
+                }) => break,
+                Err(e) => return Err(e),
             };
             let full = list.len() == 200;
             map.extend(list.into_iter().map(|e| (e.name, e.id)));
@@ -500,7 +518,15 @@ impl MattermostBackend {
             }
         }
         cache.replace(map.clone());
-        map
+        Ok(map)
+    }
+
+    /// Neues Server-Emoji (selbst angelegt oder per WebSocket gemeldet) in die geladene Liste übernehmen.
+    pub(super) async fn emoji_added(&self, emoji: ApiEmoji) -> BackendEvent {
+        if let Some(map) = self.custom_emojis.lock().await.as_mut() {
+            map.insert(emoji.name.clone(), emoji.id);
+        }
+        BackendEvent::EmojiAdded { name: emoji.name }
     }
 
     /// Kanal-IDs mit Preference `favorite_channel` = "true" (wie Webapp und Handy-App).
@@ -759,12 +785,16 @@ impl ChatBackend for MattermostBackend {
         Ok(())
     }
 
+    fn emoji_name_problem(&self, name: &str) -> Option<&'static str> {
+        emoji::name_problem(name)
+    }
+
     async fn custom_emojis(&self) -> Result<Vec<String>> {
-        Ok(self.custom_emoji_map().await.into_keys().collect())
+        Ok(self.custom_emoji_map().await?.into_keys().collect())
     }
 
     async fn custom_emoji(&self, name: &str) -> Result<Option<Avatar>> {
-        let Some(id) = self.custom_emoji_map().await.get(name).cloned() else {
+        let Some(id) = self.custom_emoji_map().await?.get(name).cloned() else {
             return Ok(None);
         };
         let resp = self
@@ -773,6 +803,32 @@ impl ChatBackend for MattermostBackend {
         Ok(Some(
             crate::backend::read_image(resp, crate::backend::MAX_IMAGE).await?,
         ))
+    }
+
+    async fn create_emoji(&self, name: &str, image: Avatar) -> Result<()> {
+        let extension = if image.mime == "image/gif" {
+            "gif"
+        } else {
+            "png"
+        };
+        // Der Server erkennt GIFs an der Dateiendung, nicht am Inhalt.
+        let part = reqwest::multipart::Part::bytes(image.data)
+            .file_name(format!("{name}.{extension}"))
+            .mime_str(&image.mime)?;
+        let form = reqwest::multipart::Form::new()
+            .text(
+                "emoji",
+                json!({ "creator_id": self.me.id, "name": name }).to_string(),
+            )
+            .part("image", part);
+        let created: ApiEmoji = self
+            .send_file_req(self.req(Method::POST, "/emoji").multipart(form))
+            .await
+            .map_err(emoji_upload_error)?
+            .json()
+            .await?;
+        self.emoji_added(created).await;
+        Ok(())
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Message>> {
@@ -875,6 +931,25 @@ impl ChatBackend for MattermostBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn emoji_upload_errors_are_explained() {
+        let api = |status| Error::Api {
+            status,
+            body: "Unable to create emoji.".into(),
+        };
+        assert!(
+            emoji_upload_error(api(501))
+                .to_string()
+                .contains("abgeschaltet")
+        );
+        assert!(emoji_upload_error(api(403)).to_string().contains("erlaubt"));
+        assert!(emoji_upload_error(api(413)).to_string().contains("512 KiB"));
+        assert!(
+            emoji_upload_error(api(400)).to_string().contains("Unable"),
+            "unbekannte Fehler unverändert"
+        );
+    }
 
     #[test]
     fn server_url_needs_tls_except_loopback() {

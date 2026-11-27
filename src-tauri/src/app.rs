@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use chatty_core::app::file_name;
+use chatty_core::backend::Avatar;
+use chatty_core::emoji_image::PreparedEmoji;
 use chatty_core::error::{Error, Result};
 use chatty_core::model::{Account, Attachment, BackendEvent, Message, Page, Presence, Space};
 use chatty_core::{App, AppInfo};
@@ -17,6 +19,57 @@ pub struct AppState {
     app: Arc<App>,
     /// Im Dialog gewählte Dateien; das Frontend kennt nur IDs und Namen (ADR 06).
     picked: Picked,
+    emoji_draft: EmojiDraft,
+}
+
+/// Für das Frontend: vorbereitetes Bild eines neuen Server-Emojis, Vorschau unter `emoji-draft/<id>`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct EmojiDraftInfo {
+    pub id: u64,
+    pub file_name: String,
+    pub width: u32,
+    pub height: u32,
+    pub frames: usize,
+    pub bytes: usize,
+    pub resized: bool,
+}
+
+/// Zuletzt gewähltes Emoji-Bild: es gibt nur einen Dialog, ein neues Bild ersetzt das alte.
+#[derive(Default)]
+pub struct EmojiDraft(Mutex<(u64, Option<Avatar>)>);
+
+impl EmojiDraft {
+    fn lock(&self) -> std::sync::MutexGuard<'_, (u64, Option<Avatar>)> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    pub fn set(&self, file_name: String, prepared: PreparedEmoji) -> EmojiDraftInfo {
+        let mut guard = self.lock();
+        guard.0 += 1;
+        let info = EmojiDraftInfo {
+            id: guard.0,
+            file_name,
+            width: prepared.width,
+            height: prepared.height,
+            frames: prepared.frames,
+            bytes: prepared.image.data.len(),
+            resized: prepared.resized,
+        };
+        guard.1 = Some(prepared.image);
+        info
+    }
+
+    pub fn get(&self, id: u64) -> Option<Avatar> {
+        let guard = self.lock();
+        if guard.0 == id { guard.1.clone() } else { None }
+    }
+
+    pub fn clear(&self, id: u64) {
+        let mut guard = self.lock();
+        if guard.0 == id {
+            guard.1 = None;
+        }
+    }
 }
 
 /// Für das Frontend: gewählte Datei ohne Pfad.
@@ -76,6 +129,7 @@ pub fn setup(handle: &AppHandle) -> Result<()> {
     handle.manage(AppState {
         app: app.clone(),
         picked: Picked::default(),
+        emoji_draft: EmojiDraft::default(),
     });
     tauri::async_runtime::spawn(event_loop(handle.clone(), app.clone(), rx));
     tauri::async_runtime::spawn(async move { app.restore_all() });
@@ -223,6 +277,66 @@ pub async fn set_space_flag(
 #[tauri::command]
 pub async fn custom_emojis(state: State<'_, AppState>, account: String) -> Cmd<Vec<String>> {
     state.app.custom_emojis(&account).await
+}
+
+/// Warum `name` als neues Server-Emoji nicht geht; `None` = frei.
+#[tauri::command]
+pub async fn emoji_name_problem(
+    state: State<'_, AppState>,
+    account: String,
+    name: String,
+) -> Cmd<Option<String>> {
+    state.app.emoji_name_problem(&account, &name).await
+}
+
+/// Bild für ein neues Server-Emoji wählen und vorbereiten (verkleinern im Kern). `None` = abgebrochen.
+#[tauri::command]
+pub async fn pick_emoji_image(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Cmd<Option<EmojiDraftInfo>> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("Bilder", &["png", "jpg", "jpeg", "gif", "webp"])
+        .pick_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx.await.ok().flatten() else {
+        return Ok(None);
+    };
+    let path = path.into_path().map_err(|e| Error::other(e.to_string()))?;
+    let name = file_name(&path);
+    // Verkleinern großer GIFs dauert spürbar: nicht auf dem async-Thread.
+    let prepared =
+        tauri::async_runtime::spawn_blocking(move || chatty_core::emoji_image::prepare_file(&path))
+            .await
+            .map_err(|e| Error::other(e.to_string()))??;
+    Ok(Some(state.emoji_draft.set(name, prepared)))
+}
+
+/// Neues Server-Emoji mit dem zuletzt gewählten Bild (`draft` aus `pick_emoji_image`) anlegen.
+#[tauri::command]
+pub async fn create_emoji(
+    state: State<'_, AppState>,
+    account: String,
+    name: String,
+    draft: u64,
+) -> Cmd<()> {
+    let image = state
+        .emoji_draft
+        .get(draft)
+        .ok_or_else(|| Error::other("Bild nicht mehr verfügbar, bitte neu wählen"))?;
+    state.app.create_emoji(&account, &name, image).await?;
+    state.emoji_draft.clear(draft);
+    Ok(())
+}
+
+/// Unicode-Emojis (Name, Emoji) für den Emoji-Picker; für alle Konten gleich.
+#[tauri::command]
+pub fn emoji_catalog() -> Vec<(&'static str, &'static str)> {
+    chatty_core::backend::mattermost::emoji_catalog()
 }
 
 #[tauri::command]
@@ -471,7 +585,12 @@ pub fn avatar_protocol(
                     .ok()
                     .and_then(|p| chatty_core::app::local_preview(&p[0])),
                 Some(Err(_)) => None,
-                None => state.app.image(&path).await,
+                // Vorschau eines neuen Server-Emojis (`emoji-draft/<id>`), schon verkleinert.
+                None => match path.strip_prefix("emoji-draft/").map(str::parse::<u64>) {
+                    Some(Ok(id)) => state.emoji_draft.get(id),
+                    Some(Err(_)) => None,
+                    None => state.app.image(&path).await,
+                },
             },
             None => None,
         };
@@ -526,5 +645,28 @@ mod picked_tests {
         );
         picked.remove(&ids);
         assert!(picked.paths(&ids[..1]).is_err(), "nach dem Senden entfernt");
+    }
+    #[test]
+    fn newer_emoji_draft_replaces_older() {
+        let prepared = |data: &[u8]| PreparedEmoji {
+            image: Avatar {
+                data: data.to_vec(),
+                mime: "image/png".into(),
+            },
+            width: 1,
+            height: 1,
+            frames: 1,
+            resized: false,
+        };
+        let draft = EmojiDraft::default();
+        let first = draft.set("a.png".into(), prepared(b"a"));
+        assert_eq!(draft.get(first.id).unwrap().data, b"a");
+        let second = draft.set("b.png".into(), prepared(b"bb"));
+        assert_eq!(second.bytes, 2);
+        assert!(draft.get(first.id).is_none(), "altes Bild ersetzt");
+        draft.clear(first.id);
+        assert!(draft.get(second.id).is_some(), "veraltete ID löscht nichts");
+        draft.clear(second.id);
+        assert!(draft.get(second.id).is_none(), "nach dem Anlegen entfernt");
     }
 }

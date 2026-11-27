@@ -2,6 +2,7 @@
   import { api, pickedSrc, type PickedFile } from "$lib/api";
   import { chat } from "$lib/chat.svelte";
   import { formatText } from "$lib/format";
+  import EmojiPicker from "./EmojiPicker.svelte";
 
   let {
     placeholder,
@@ -13,6 +14,7 @@
   let files = $state<PickedFile[]>([]);
   let sending = $state(false);
   let preview = $state(false);
+  let emojiOpen = $state(false);
   // Dateien ohne Vorschaubild (kein Bild, zu groß): nur Name zeigen.
   let noThumb = $state<Record<number, boolean>>({});
   let area: HTMLTextAreaElement;
@@ -64,6 +66,19 @@
     }
   }
 
+  function insertEmoji(emoji: string) {
+    emojiOpen = false;
+    const start = area?.selectionStart ?? text.length;
+    const end = area?.selectionEnd ?? text.length;
+    text = text.slice(0, start) + emoji + text.slice(end);
+    const cursor = start + emoji.length;
+    requestAnimationFrame(() => {
+      area.focus();
+      area.setSelectionRange(cursor, cursor);
+      grow();
+    });
+  }
+
   function grow() {
     area.style.height = "auto";
     area.style.height = Math.min(area.scrollHeight, 240) + "px";
@@ -71,6 +86,9 @@
 </script>
 
 <div class="composer">
+  {#if emojiOpen}
+    <EmojiPicker onPick={insertEmoji} onClose={() => (emojiOpen = false)} />
+  {/if}
   {#if files.length}
     <div class="chips">
       {#each files as f, i (f.id)}
@@ -100,6 +118,16 @@
     ></textarea>
   </div>
   <div class="tools">
+    <button
+      class="icon-btn"
+      class:on={emojiOpen}
+      title="Emoji einfügen"
+      aria-expanded={emojiOpen}
+      onclick={(e) => {
+        e.stopPropagation();
+        emojiOpen = !emojiOpen;
+      }}>🙂</button
+    >
     <button class="icon-btn" title="Datei anhängen (oder Bild mit Strg+V einfügen)" onclick={pick}>📎</button>
     <button class="icon-btn" class:on={preview} title="Vorschau der Formatierung" onclick={() => (preview = !preview)}
       >👁</button
@@ -111,6 +139,7 @@
 
 <style>
   .composer {
+    position: relative;
     margin: 0 20px 16px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
