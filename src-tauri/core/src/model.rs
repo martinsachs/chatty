@@ -193,6 +193,10 @@ pub enum BackendEvent {
     OwnPresence {
         presence: Presence,
     },
+    /// Neues eigenes Server-Emoji (Name ohne Doppelpunkte).
+    EmojiAdded {
+        name: String,
+    },
     /// Verbindungszustand (z. B. WebSocket getrennt, Token abgelaufen).
     Status {
         online: bool,

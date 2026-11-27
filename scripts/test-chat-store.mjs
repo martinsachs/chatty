@@ -121,6 +121,13 @@ await chat.setPresence("acc", "busy");
 assert.equal(chat.ownPresence.acc, "busy", "Auswahl sofort sichtbar");
 assert.deepEqual(calls, [["setPresence", "acc", "busy", "Beschäftigt"]], "Status-Text = Beschriftung");
 
+// Neues Server-Emoji per Ereignis: sofort als Bild nutzbar, vorhandene bleiben.
+chat.customEmojis = { acc: new Set(["parrot"]) };
+chat["onEvent"]?.call(chat, { account: "acc", event: { type: "emoji_added", name: "llama" }, sound: false });
+assert.deepEqual([...chat.customEmojis.acc].sort(), ["llama", "parrot"], "emoji_added ergänzt die Liste");
+chat.addCustomEmoji("acc", "llama");
+assert.equal(chat.customEmojis.acc.size, 2, "doppelt gemeldet: einmal");
+
 // K5: Kontowechsel meldet alten Space inaktiv.
 calls.length = 0;
 await chat.selectAccount("acc2");

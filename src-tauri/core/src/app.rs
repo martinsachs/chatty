@@ -268,7 +268,9 @@ impl App {
                     store.delete_message(account, message_id)
                 }
                 BackendEvent::SpaceUpdated { space } => store.put_space(account, space),
-                BackendEvent::Status { .. } | BackendEvent::OwnPresence { .. } => Ok(()),
+                BackendEvent::Status { .. }
+                | BackendEvent::OwnPresence { .. }
+                | BackendEvent::EmojiAdded { .. } => Ok(()),
             }
         };
         if let Err(e) = cached {
@@ -276,6 +278,10 @@ impl App {
         }
         match &*event {
             BackendEvent::MessageCreated { message } => self.alert(account, message),
+            BackendEvent::EmojiAdded { name } => {
+                self.forget_emoji(account, name);
+                Alert::default()
+            }
             _ => Alert::default(),
         }
     }
@@ -532,6 +538,34 @@ impl App {
     /// Namen eigener Server-Emojis des Kontos (leer, wenn das Backend keine kennt).
     pub async fn custom_emojis(&self, account: &str) -> Result<Vec<String>> {
         self.backend(account).await?.custom_emojis().await
+    }
+
+    /// Warum `name` als neues Server-Emoji nicht geht (Regeln des Backends, belegter Name), sonst `None`.
+    pub async fn emoji_name_problem(&self, account: &str, name: &str) -> Result<Option<String>> {
+        let backend = self.backend(account).await?;
+        if let Some(problem) = backend.emoji_name_problem(name) {
+            return Ok(Some(problem.into()));
+        }
+        let taken = backend.custom_emojis().await?.iter().any(|n| n == name);
+        Ok(taken.then(|| "Name gehört schon einem Server-Emoji".into()))
+    }
+
+    /// Eigenes Server-Emoji anlegen; `image` kommt aus [`crate::emoji_image::prepare`].
+    pub async fn create_emoji(&self, account: &str, name: &str, image: Avatar) -> Result<()> {
+        if let Some(problem) = self.emoji_name_problem(account, name).await? {
+            return Err(Error::other(problem));
+        }
+        self.backend(account)
+            .await?
+            .create_emoji(name, image)
+            .await?;
+        self.forget_emoji(account, name);
+        Ok(())
+    }
+
+    /// Gemerktes „kein Bild“ eines bisher unbekannten Namens verwerfen, damit das neue Bild lädt.
+    fn forget_emoji(&self, account: &str, name: &str) {
+        lock(&self.avatars).remove(&format!("{account}/emoji/{name}"));
     }
 
     pub fn cached_spaces(&self, account: &str) -> Result<Vec<Space>> {
@@ -861,6 +895,20 @@ mod tests {
         app.set_settings("mattermost".into(), true).unwrap();
         app.set_sound(true).unwrap();
         assert!(app.handle_event("a", &mut ev).sound, "Ton für alle Optiken");
+    }
+
+    #[test]
+    fn added_emoji_replaces_remembered_missing_image() {
+        let (_d, app) = app();
+        lock(&app.avatars).insert("a/emoji/parrot".into(), AvatarCell::default());
+        lock(&app.avatars).insert("a/emoji/other".into(), AvatarCell::default());
+        let mut ev = BackendEvent::EmojiAdded {
+            name: "parrot".into(),
+        };
+        assert_eq!(app.handle_event("a", &mut ev), Alert::default());
+        let avatars = lock(&app.avatars);
+        assert!(!avatars.contains_key("a/emoji/parrot"));
+        assert!(avatars.contains_key("a/emoji/other"));
     }
 
     #[test]

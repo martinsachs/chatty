@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { chat } from "$lib/chat.svelte";
+  import AddEmojiDialog from "$lib/components/AddEmojiDialog.svelte";
   import ChannelView from "$lib/components/ChannelView.svelte";
   import Rhs from "$lib/components/Rhs.svelte";
   import Settings, { type SettingsTab } from "$lib/components/Settings.svelte";
@@ -52,6 +53,9 @@
 
 {#if settingsOpen}
   <Settings initialTab={settingsTab} onClose={() => (settingsOpen = false)} />
+{/if}
+{#if chat.addEmojiOpen}
+  <AddEmojiDialog onClose={() => (chat.addEmojiOpen = false)} />
 {/if}
 <Toasts />
 

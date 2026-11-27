@@ -38,6 +38,7 @@
     [...((chat.account && chat.customEmojis[chat.account]) || [])].filter(matches).sort(),
   );
   const unicode = $derived(catalog.filter(([name]) => matches(name)));
+  const canAddCustom = $derived(chat.currentAccount?.kind === "mattermost");
 
   function loadRecent(): string[] {
     try {
@@ -89,8 +90,20 @@
         {/each}
       </div>
     {/if}
-    {#if customNames.length}
-      <h4>Server-Emojis</h4>
+    {#if customNames.length || (canAddCustom && !needle)}
+      <h4 class="with-action">
+        Server-Emojis
+        {#if canAddCustom}
+          <button
+            type="button"
+            class="add"
+            onclick={() => {
+              onClose();
+              chat.addEmojiOpen = true;
+            }}>+ Hinzufügen</button
+          >
+        {/if}
+      </h4>
       <div class="grid">
         {#each customNames as name (name)}
           <button type="button" title=":{name}:" onclick={() => pick(`:${name}:`)}>
@@ -149,6 +162,23 @@
     font-size: 11px;
     font-weight: 600;
     color: var(--text-muted);
+  }
+  h4.with-action {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .add {
+    border: none;
+    background: none;
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+  }
+  .add:hover {
+    text-decoration: underline;
   }
   .grid {
     display: grid;

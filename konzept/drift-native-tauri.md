@@ -39,6 +39,7 @@ offen, mit Grund).
 | Bild per Strg+V als Anhang mit Vorschaubild, auch für gewählte Bilder; Text in der Zwischenablage hat Vorrang (Auftrag 2026-11-25) | – | gleich (beide; native liest Bilder über `arboard`) |
 | Formatierte Vorschau des Eingabetexts (👁) (Auftrag 2026-11-25) | – | gleich (beide; nur Hauptfeld, nicht im Thread) |
 | Emoji-Auswahl (☺) im Eingabefeld: zuletzt benutzte, Server-Emojis, alle Unicode-Emojis mit Suche nach Kurznamen (Auftrag 2026-11-25) | – | Abweichung: native ohne Auswahl (Kurzcodes wie `:smile:` gehen) |
+| Eigenes Server-Emoji anlegen (Mattermost): „+ Hinzufügen“ im Emoji-Picker, Dialog mit Name, Bild und Vorschau; der Kern verkleinert auf 128 × 128 (GIF bleibt animiert); neue Emojis kommen per WebSocket `emoji_added` (Auftrag 2026-11-27) | – | Abweichung: native ohne Dialog; per `emoji_added` gemeldete Emojis zeigen beide |
 | Emojis im Text 1,3× Schriftgröße, Nachricht nur aus Emojis groß; native setzt Farb-Emoji-Schrift ausdrücklich (sonst Schwarz-Weiß-Glyphen aus DejaVu Sans) (Auftrag 2026-11-24) | – | gleich (beide) |
 | Tagestrenner „Heute“, „Gestern“, Datum | fehlte | angeglichen |
 | Gruppierung Folgenachrichten (5 min, gleicher Tag), Uhrzeit beim Überfahren | ohne Tagesgrenze, ohne Uhrzeit | angeglichen |

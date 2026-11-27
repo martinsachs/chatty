@@ -16,7 +16,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::tungstenite::protocol::Role;
 
 use super::MattermostBackend;
-use super::api::{ApiChannel, ApiPost, ApiStatus, ApiUser, text_mentions};
+use super::api::{ApiChannel, ApiEmoji, ApiPost, ApiStatus, ApiUser, text_mentions};
 use crate::backend::EventSender;
 use crate::error::{Error, Result};
 use crate::model::BackendEvent;
@@ -325,6 +325,11 @@ async fn handle(backend: &MattermostBackend, ev: &WsEvent) -> Result<Vec<Backend
                 space: backend.fetch_space(&ch.id).await?,
             }])
         }
+        // Neues eigenes Server-Emoji, auch selbst angelegt (Mattermost meldet Löschen nicht)
+        "emoji_added" => {
+            let emoji: ApiEmoji = nested(data, "emoji")?;
+            Ok(vec![backend.emoji_added(emoji).await])
+        }
         // Stummschaltung in anderem Client geändert
         "channel_member_updated" => {
             let member: Value = nested(data, "channelMember")?;
@@ -356,6 +361,20 @@ mod tests {
         assert_eq!(post.id, "p1");
         assert_eq!(post.channel_id, "c1");
         assert!(nested::<ApiPost>(&ev.data, "missing").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn emoji_added_carries_emoji_as_string() -> Result<()> {
+        let ev: WsEvent = serde_json::from_str(
+            r#"{"event":"emoji_added","seq":5,"data":{
+                "emoji":"{\"id\":\"e1\",\"creator_id\":\"u1\",\"name\":\"partyparrot\"}"}}"#,
+        )?;
+        let emoji: ApiEmoji = nested(&ev.data, "emoji")?;
+        assert_eq!(
+            (emoji.id.as_str(), emoji.name.as_str()),
+            ("e1", "partyparrot")
+        );
         Ok(())
     }
 

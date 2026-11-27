@@ -113,6 +113,7 @@ macOS `~/Library/Application Support/chatty`). Er darf gelöscht werden.
 | Favorit | ☆ beim Überfahren des Eintrags, oder Eintrag in „Favoriten“ ziehen; dort per Ziehen ordnen, herausziehen entfernt |
 | Stumm schalten | 🔔 beim Überfahren; stumme Kanäle grau, Benachrichtigung nur bei Erwähnung |
 | Emojis | `:name:` im Text wird zum Emoji (volle Mattermost-Liste); eigene Server-Emojis erscheinen als Bild, auch in Reaktionen; Status-Emoji der Person steht neben der Direktnachricht. Emojis sind etwas größer als der Text, Nachrichten nur aus Emojis (bis 8–10) groß |
+| Emoji hinzufügen (Mattermost) | Im Emoji-Picker bei „Server-Emojis“ auf **+ Hinzufügen** klicken. Namen eingeben, Bild auswählen, Vorschau prüfen, **Speichern** klicken. Große Bilder verkleinert chatty auf 128 × 128; GIFs bleiben animiert (höchstens 70 Bilder). Der Server muss eigene Emojis erlauben. Neue Emojis anderer erscheinen ohne Neustart |
 | Schriftgröße | **+ → Darstellung → Schriftgröße** (80–200 %) oder Strg + Plus/Minus, Strg + 0 = 100 %; gilt je Rechner für die ganze Oberfläche |
 | Kanal-Header (Mattermost) | erste Zeile unter dem Kanalnamen, Links anklickbar; ganzer Text als Tooltip (Tauri) |
 | Zur neuesten Nachricht | Knopf ↓ unten rechts, sobald hochgescrollt |

@@ -203,6 +203,14 @@ impl PostList {
     }
 }
 
+/// Eigenes Server-Emoji (Liste, Anlegen, WebSocket `emoji_added`).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct ApiEmoji {
+    pub id: String,
+    pub name: String,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct UploadResponse {

@@ -4,6 +4,7 @@
 pub mod app;
 pub mod backend;
 pub mod config;
+pub mod emoji_image;
 pub mod error;
 pub mod model;
 pub mod secrets;

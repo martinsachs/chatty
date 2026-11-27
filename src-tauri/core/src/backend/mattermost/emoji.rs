@@ -51,6 +51,25 @@ fn is_name_char(c: char) -> bool {
     c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '+' | '-')
 }
 
+/// Höchstlänge eines Emoji-Namens (Mattermost `EmojiNameMaxLength`).
+pub const NAME_MAX_LEN: usize = 64;
+
+/// Warum `name` als neues Server-Emoji nicht geht (Regeln wie Mattermost `IsValidEmojiName`), sonst `None`.
+/// Belegte eigene Namen prüft der Aufrufer.
+pub fn name_problem(name: &str) -> Option<&'static str> {
+    if name.is_empty() {
+        Some("Name fehlt")
+    } else if name.len() > NAME_MAX_LEN {
+        Some("Name zu lang (höchstens 64 Zeichen)")
+    } else if !name.chars().all(is_name_char) {
+        Some("Nur Kleinbuchstaben, Ziffern und - + _")
+    } else if by_name().contains_key(name) {
+        Some("Name gehört schon einem Standard-Emoji")
+    } else {
+        None
+    }
+}
+
 /// Bekannte Kurzcodes (`:smile:`) durch Unicode ersetzen, außer in `Code` und ```Codeblöcken```.
 /// Unbekannte (eigene Server-Emojis) bleiben stehen; die Oberfläche zeigt sie als Bild.
 pub fn replace_shortcodes(text: &str) -> String {
@@ -119,6 +138,21 @@ mod tests {
         assert_eq!(unique.len(), list.len());
         assert!(list.contains(&("smile", "😄")));
         assert!(list.contains(&("+1", "👍")), "erster Name, nicht thumbsup");
+    }
+
+    #[test]
+    fn new_emoji_names_follow_mattermost_rules() {
+        assert_eq!(name_problem("party-parrot_2+"), None);
+        assert_eq!(name_problem(""), Some("Name fehlt"));
+        assert!(name_problem(&"a".repeat(NAME_MAX_LEN)).is_none());
+        assert!(name_problem(&"a".repeat(NAME_MAX_LEN + 1)).is_some());
+        assert!(name_problem("Parrot").is_some(), "Großbuchstaben");
+        assert!(name_problem("party parrot").is_some());
+        assert_eq!(
+            name_problem("thumbsup"),
+            Some("Name gehört schon einem Standard-Emoji"),
+            "auch Aliasse"
+        );
     }
 
     #[test]

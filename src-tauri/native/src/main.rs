@@ -1641,6 +1641,10 @@ fn handle(s: &mut State, message: Message) -> Task<Message> {
                 }
                 // Online-Status zeigt nur die Tauri-Variante (konzept/drift-native-tauri.md).
                 BackendEvent::OwnPresence { .. } => Task::none(),
+                BackendEvent::EmojiAdded { name } => {
+                    s.custom_emojis.entry(account).or_default().insert(name);
+                    Task::none()
+                }
                 BackendEvent::Status { online, detail } => {
                     let mut tasks = vec![refresh_info(s)];
                     if online {
