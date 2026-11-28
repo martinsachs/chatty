@@ -70,6 +70,7 @@ offen, mit Grund).
 | Funktion | Status |
 |---|---|
 | Startgröße: Hauptfenster 2/3 des Bildschirms, zentriert, erst danach sichtbar (Auftrag 2026-11-21) | gleich (beide); abgelöste Tauri-Fenster 480×640 |
+| macOS: Titelleiste in der Farbe der Kontoleiste der Optik, Titeltext hell oder dunkel nach Helligkeit (Auftrag 2026-11-28) | Abweichung: native mit System-Titelleiste |
 
 ## Optiken
 

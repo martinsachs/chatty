@@ -436,11 +436,13 @@ pub fn open_space_window(app: AppHandle, account: String, space: String, title: 
     }
     // Hash-Route: SvelteKit sieht Pfad "/", das Frontend liest den Hash.
     let url = format!("#popout/{}/{}", urlencode(&account), urlencode(&space));
-    WebviewWindowBuilder::new(&app, label, WebviewUrl::App(url.into()))
+    let builder = WebviewWindowBuilder::new(&app, label, WebviewUrl::App(url.into()))
         .title(title)
-        .inner_size(480.0, 640.0)
-        .build()
-        .map_err(|e| Error::other(e.to_string()))?;
+        .inner_size(480.0, 640.0);
+    // Wie das Hauptfenster (tauri.conf.json): Titelleiste zeigt die Fensterfarbe der Optik.
+    #[cfg(target_os = "macos")]
+    let builder = builder.title_bar_style(tauri::TitleBarStyle::Transparent);
+    builder.build().map_err(|e| Error::other(e.to_string()))?;
     Ok(())
 }
 
