@@ -6,6 +6,7 @@
   import Settings, { type SettingsTab } from "$lib/components/Settings.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Toasts from "$lib/components/Toasts.svelte";
+  import { applyTitleBar } from "$lib/titlebar";
   import { checkForUpdate } from "$lib/update";
 
   let settingsOpen = $state(false);
@@ -13,6 +14,7 @@
 
   $effect(() => {
     document.documentElement.dataset.theme = chat.theme;
+    applyTitleBar();
   });
 
   onMount(async () => {

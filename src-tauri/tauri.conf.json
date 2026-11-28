@@ -18,7 +18,8 @@
         "label": "main",
         "minWidth": 720,
         "minHeight": 480,
-        "visible": false
+        "visible": false,
+        "titleBarStyle": "Transparent"
       }
     ],
     "security": {
